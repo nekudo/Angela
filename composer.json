@@ -1,0 +1,18 @@
+{
+    "name": "nekudo/angela",
+    "description": "Simple framework to manage gearman workers in your PHP application.",
+    "keywords": ["framework", "gearman", "worker", "manager", "microservices"],
+    "homepage": "https://github.com/nekudo/Angela",
+    "authors": [
+        {
+            "name": "Simon Samtleben",
+            "email": "simon@nekudo.com",
+            "homepage": "https://nekudo.com"
+        }
+    ],
+    "require": {
+        "php": ">=5.5.0",
+        "ext-gearman": "=>0.5.0"
+    },
+    "license": "MIT"
+}
