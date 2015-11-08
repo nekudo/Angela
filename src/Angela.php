@@ -254,6 +254,8 @@ class Angela
      */
     public function keepalive()
     {
+        $this->reloadPids();
+        
         // if already running don't do anything:
         if ($this->managerIsRunning() === true) {
             return false;
