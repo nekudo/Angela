@@ -21,35 +21,9 @@ require_once __DIR__ . '/../src/Angela.php';
 /**
  *  Create a new Angela instance.
  */
-$angela = new \Nekudo\Angela\Angela;
+$configPath = __DIR__ . '/config.php'; // Always use an absolute path to the config file!
+$angela = new \Nekudo\Angela\Angela($configPath);
 
-/**
- * Set gearman credentials and path information.
- */
-$angela->setGearmanCredentials('127.0.0.1', 4730);
-// Log files for each worker-group go into this folder
-$angela->setLogPath(__DIR__ . '/logs/');
-// Folder containing worker pid files
-$angela->setRunPath(__DIR__ . '/run/');
-// Folder containig you actual workers
-$angela->setWorkerPath(__DIR__ . '/worker/');
-
-/**
- * Configure your workers.
- */
-$angela->setWorkerConfig(
-    [
-        // 'hello' is the worker-type or group, add as many groups as you like...
-        'hello' => [
-            // The workers classname including namespace:
-            'classname' => 'Nekudo\Angela\Demo\HelloAngela',
-            // Workers filename. Worker has to be placed insite the "worker path" defined above:
-            'filename' => 'HelloAngela.php',
-            // Defines how many instances of this worker will be started:
-            'instances' => 1,
-        ],
-    ]
-);
 
 /**
  * Now use Angela to manage your workers.
@@ -98,7 +72,7 @@ switch ($action) {
             echo $workerName . ":\t\t[" . $responseString . "]" . PHP_EOL;
         }
         break;
-        
+
     default:
         exit('Invalid action. Valid actions are: start|stop|restart|keepalive' . PHP_EOL);
         break;

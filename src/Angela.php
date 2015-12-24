@@ -10,14 +10,29 @@
 class Angela
 {
     /**
-     * @var string $gearmanHost Hostname or IP of gearman server.
+     * @var \Noodlehaus\Config $config
      */
-    protected $gearmanHost = '127.0.0.1';
+    protected $config;
 
     /**
-     * @var int $gearmanPort Port of gearman server.
+     * @var string $serverHost Hostname or IP of mq/job server.
      */
-    protected $gearmanPort = 4730;
+    protected $serverHost = '127.0.0.1';
+
+    /**
+     * @var int $serverPort Port of mq/job server.
+     */
+    protected $serverPort = 4730;
+
+    /**
+     * @var string $serverUsername Username for mq/job server.
+     */
+    protected $serverUsername = '';
+
+    /**
+     * @var string $serverPassword Passford for mq/job server.
+     */
+    protected $serverPassword = '';
 
     /**
      * @var string $workerPath  Path to worker files.
@@ -54,29 +69,63 @@ class Angela
      */
     protected $pids = [];
 
-    public function __construct()
+    public function __construct($configPath)
     {
-        $this->workerPath = __DIR__ . '/../worker/';
-        $this->runPath = __DIR__ . '/../run/';
-        $this->logPath = __DIR__ . '/../logs/';
+        if (empty($configPath)) {
+            throw new \InvalidArgumentException('ConfigPath can not be empty.');
+        }
+        $this->setConfigFromFile($configPath);
     }
 
     /**
-     * Sets germand hostname and port.
+     * Loads configuration from file.
      *
-     * @param string $host
-     * @param int $port
+     * @param string $configPath
+     * @throws \RuntimeException
      */
-    public function setGearmanCredentials($host, $port = 4730)
+    public function setConfigFromFile($configPath)
     {
-        if (empty($host)) {
-            throw  new \InvalidArgumentException('Gearman host is required.');
+        if (!file_exists($configPath)) {
+            throw new \RuntimeException('Configuration file not found');
         }
-        if ($port < 1 || $port > 65535) {
-            throw new \InvalidArgumentException('Invalid port number.');
+        $this->config = \Noodlehaus\Config::load($configPath);
+        $this->checkConfig();
+        $this->loadConfig();
+    }
+
+    /**
+     * Checks if configuration is valid.
+     *
+     * @return boolean
+     * @throws \RuntimeException
+     */
+    protected function checkConfig()
+    {
+        $serverCredentials = $this->config->get('angela.server');
+        if (empty($serverCredentials)) {
+            throw new \RuntimeException('Invalid configuration. Server block is missing.');
         }
-        $this->gearmanHost = $host;
-        $this->gearmanPort = (int)$port;
+        $workerScripts = $this->config->get('angela.workerScripts');
+        if (empty($workerScripts)) {
+            throw new \RuntimeException('Invalid configuration. WorkerScripts block is missing.');
+        }
+        return true;
+    }
+
+    /**
+     * Loads required values form configuration.
+     */
+    protected function loadConfig()
+    {
+        $this->serverHost = $this->config->get('angela.server.host', '127.0.0.1');
+        $this->serverPort = $this->config->get('angela.server.port', 4730);
+        $this->serverUsername = $this->config->get('angela.server.user', '');
+        $this->serverPassword = $this->config->get('angela.server.pass', '');
+        $this->workerPath = $this->config->get('angela.workerPath', '');
+        $this->runPath = $this->config->get('angela.runPath', '');
+        $this->logPath = $this->config->get('angela.logPath', '');
+        $this->startupConfig = $this->config->get('angela.workerScripts', []);
+        $this->timeTillGhost = $this->config->get('angela.timeTillGhost', 1200);
     }
 
     /**
@@ -226,7 +275,7 @@ class Angela
         }
 
         $Client = new \GearmanClient();
-        $Client->addServer($this->gearmanHost, $this->gearmanPort);
+        $Client->addServer($this->serverHost, $this->serverPort);
         $Client->setTimeout(1000);
         foreach ($this->pids as $workerPids) {
             foreach ($workerPids as $workerName => $workerPid) {
@@ -255,7 +304,7 @@ class Angela
     public function keepalive()
     {
         $this->reloadPids();
-        
+
         // if already running don't do anything:
         if ($this->managerIsRunning() === true) {
             return false;
@@ -301,8 +350,8 @@ class Angela
             $workerName,
             $workerPath,
             $workerClassname,
-            $this->gearmanHost,
-            $this->gearmanPort,
+            $this->serverHost,
+            $this->serverPort,
             $this->runPath
         );
         exec(escapeshellcmd($startupCmd) . ' >> ' . $this->logPath . $workerType.'.log 2>&1 &');
@@ -321,7 +370,7 @@ class Angela
         }
 
         $Client = new \GearmanClient();
-        $Client->addServer($this->gearmanHost, $this->gearmanPort);
+        $Client->addServer($this->serverHost, $this->serverPort);
         $Client->setTimeout(1000);
         foreach ($this->pids as $workerPids) {
             foreach ($workerPids as $workerName => $workerPid) {
