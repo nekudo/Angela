@@ -50,6 +50,11 @@ class Angela
     protected $logPath;
 
     /**
+     * @var string $configPath Path to configuration file.
+     */
+    protected $configPath;
+
+    /**
      * @var array $startupConfig The worker startup configuration.
      */
     protected $startupConfig = [];
@@ -75,6 +80,7 @@ class Angela
             throw new \InvalidArgumentException('ConfigPath can not be empty.');
         }
         $this->setConfigFromFile($configPath);
+        $this->configPath = $configPath;
     }
 
     /**
@@ -122,7 +128,7 @@ class Angela
         $this->serverUsername = $this->config->get('angela.server.user', '');
         $this->serverPassword = $this->config->get('angela.server.pass', '');
         $this->workerPath = $this->config->get('angela.workerPath', '');
-        $this->runPath = $this->config->get('angela.runPath', '');
+        $this->runPath = $this->config->get('angela.pidPath', '');
         $this->logPath = $this->config->get('angela.logPath', '');
         $this->startupConfig = $this->config->get('angela.workerScripts', []);
         $this->timeTillGhost = $this->config->get('angela.timeTillGhost', 1200);
@@ -337,22 +343,17 @@ class Angela
      */
     protected function startupWorker($workerType)
     {
-        $workerFilename = $this->startupConfig[$workerType]['filename'];
+
         $workerId = $this->getId();
-        $baseCmd = 'php %s --name %s --path %s --classname %s --gh %s --gp %d --rp %s';
-        $launcherPath = __DIR__ . '/cli/launcher.php';
-        $workerPath = $this->workerPath . $workerFilename;
         $workerName = $workerType . '_' . $workerId;
-        $workerClassname = base64_encode($this->startupConfig[$workerType]['classname']);
+        $baseCmd = 'php %s --name %s --type %s --config %s';
+        $launcherPath = __DIR__ . '/cli/launcher.php';
         $startupCmd = sprintf(
             $baseCmd,
             $launcherPath,
             $workerName,
-            $workerPath,
-            $workerClassname,
-            $this->serverHost,
-            $this->serverPort,
-            $this->runPath
+            $workerType,
+            $this->configPath
         );
         exec(escapeshellcmd($startupCmd) . ' >> ' . $this->logPath . $workerType.'.log 2>&1 &');
         $this->reloadPids();
@@ -445,16 +446,16 @@ class Angela
             $procInfo = preg_split('#\s+#', $line);
             $match = [];
             $pid = $procInfo[0];
-            if (preg_match('#--name\s(.+)\s--#U', $line, $match) !== 1) {
+            if (preg_match('#--name\s(.+)\s--type\s(.+)\s--#U', $line, $match) !== 1) {
                 continue;
             }
             $workerName = trim($match[1]);
-            foreach ($this->startupConfig as $workerType => $workerConfig) {
-                $classname = base64_encode($workerConfig['classname']);
-                if (strpos($line, $classname) !== false) {
-                    $this->pids[$workerType][$workerName] = $pid;
-                }
+            $workerType = trim($match[2]);
+            if (!isset($this->startupConfig[$workerType])) {
+                continue;
             }
+
+            $this->pids[$workerType][$workerName] = $pid;
         }
         return true;
     }

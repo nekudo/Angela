@@ -12,11 +12,13 @@ if (empty($argv[1])) {
     exit('No action given. Valid actions are: start|stop|restart|keepalive|status' . PHP_EOL);
 }
 
+require_once __DIR__ . '/../vendor/autoload.php';
+
 /**
  * Require "Angela" the worker manager.
  * In a real application please use composers autoloading, like: require 'vendor/autoload.php';
  */
-require_once __DIR__ . '/../src/Angela.php';
+//require_once __DIR__ . '/../src/Angela.php';
 
 /**
  *  Create a new Angela instance.

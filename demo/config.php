@@ -2,9 +2,9 @@
 return [
     'angela' => [
 
-        'workerPath' => __DIR__ . '/Worker/',
-        'pidPath' => __DIR__ . '/../../cli/run/',
-        'logPath' => __DIR__ . '/../../logs/',
+        'workerPath' => __DIR__ . '/worker/',
+        'pidPath' => __DIR__ . '/run/',
+        'logPath' => __DIR__ . '/logs/',
 
         'server' => [
             'type' => 'gearman', // valid servers are: gearman, rabbit
