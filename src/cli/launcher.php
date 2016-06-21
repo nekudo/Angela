@@ -5,51 +5,52 @@
  */
 $longOpts = [
     'name:',
-    'path:',
-    'classname:',
-    'gh:',
-    'gp:',
-    'rp:',
+    'config:',
+    'type:',
 ];
 $options = getopt('', $longOpts);
 if (empty($options['name'])) {
-    echo "Name is required.";
+    echo "Error: Name parameter is missing.\n";
     exit(1);
 }
-if (empty($options['path'])) {
-    echo "Path is required.";
+if (empty($options['config'])) {
+    echo "Error: Config parameter is missing.\n";
     exit(1);
 }
-if (empty($options['classname'])) {
-    echo "Classname is required.";
-    exit(1);
-}
-if (empty($options['gh'])) {
-    echo "Gearman hostname is required.";
-    exit(1);
-}
-if (empty($options['gp'])) {
-    echo "Gearman port is required.";
-    exit(1);
-}
-if (empty($options['rp'])) {
-    echo "Run path is required.";
+if (empty($options['type'])) {
+    echo "Error: Type parameter is missing.\n";
     exit(1);
 }
 
 $workerName = $options['name'];
-$workerPath = $options['path'];
-$workerClassname = base64_decode($options['classname']);
-$gearmanHost = $options['gh'];
-$gearmanPort = (int)$options['gp'];
-$runPath = $options['rp'];
-
-if (!file_exists($workerPath)) {
-    echo "Worker not found.";
+$configPath = $options['config'];
+$workerType = $options['type'];
+if (!file_exists($configPath)) {
+    echo "Error: Config file not found.\n";
     exit(1);
 }
 
+// load config:
+$config = require $configPath;
+
+// check worker type:
+if (!isset($config['angela']['workerScripts'][$workerType])) {
+    echo "Error: Unknown worker type.\n";
+    exit(1);
+}
+
+// check worker file:
+$pathToWorker = $config['angela']['workerPath'] . $config['angela']['workerScripts'][$workerType]['filename'];
+if (!file_exists($pathToWorker)) {
+    echo "Error: Worker file not found.\n";
+    exit(1);
+}
+
+
 // startup worker:
-require_once __DIR__ . '/../Worker.php';
-require_once $workerPath;
+require_once $pathToWorker;
+$workerClassname = $config['angela']['workerScripts'][$workerType]['classname'];
+$gearmanHost = $config['angela']['server']['host'];
+$gearmanPort = $config['angela']['server']['port'];
+$runPath = $config['angela']['pidPath'];
 $worker = new $workerClassname($workerName, $gearmanHost, $gearmanPort, $runPath);
