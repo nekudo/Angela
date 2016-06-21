@@ -1,10 +1,4 @@
 <?php
-/**
- * A simple demo application to show possible usage of the Angela framework.
- *
- * This is a simple cli script allowing to start/stop/restart/monitor gearman workers.
- * Please see the inline comments for additional information.
- */
 if (empty($argv)) {
     exit('Script can only be run in cli mode.' . PHP_EOL);
 }
@@ -12,28 +6,26 @@ if (empty($argv[1])) {
     exit('No action given. Valid actions are: start|stop|restart|keepalive|status' . PHP_EOL);
 }
 
-/**
- * Require "Angela" the worker manager.
- * In a real application please use composers autoloading, like: require 'vendor/autoload.php';
- */
-require_once __DIR__ . '/../src/Angela.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+
 
 /**
- *  Create a new Angela instance.
+ *  Create a new AngelaControl instance.
  */
-$configPath = __DIR__ . '/config.php'; // Always use an absolute path to the config file!
-$angela = new \Nekudo\Angela\Angela($configPath);
+$angelaControl = new \Nekudo\Angela\AngelaControl;
+$angelaControl->start();
 
 
 /**
  * Now use Angela to manage your workers.
  */
+/*
 $action = $argv[1];
 switch ($action) {
 
     // Starts worker processes as defined in your worker configuration:
     case 'start':
-        echo "Starting workers...\t";
+        echo "Starting worker processes...\t";
         echo (($angela->start() === true) ? '[OK]' : '[FAILED]') . PHP_EOL;
         break;
 
@@ -77,3 +69,4 @@ switch ($action) {
         exit('Invalid action. Valid actions are: start|stop|restart|keepalive' . PHP_EOL);
         break;
 }
+*/

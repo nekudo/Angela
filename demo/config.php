@@ -2,30 +2,27 @@
 return [
     'angela' => [
 
-        'workerPath' => __DIR__ . '/Worker/',
-        'pidPath' => __DIR__ . '/../../cli/run/',
-        'logPath' => __DIR__ . '/../../logs/',
+        // path to store log files:
+        'logPath' => __DIR__ . '/logs/',
 
-        'server' => [
-            'type' => 'gearman', // valid servers are: gearman, rabbit
-            'host' => '127.0.0.1',
-            'port' => 4730,
-            'user' => '',
-            'pass' => '',
+        'redis' => [
+            'dsn' => 'tcp://127.0.0.1:6379',
         ],
 
-        'timeTillGhost' => 1200,
+        // Process pool configuration. Add as many pools as you like.
+        'pool' => [
 
-        // Worker startup configuration:
-        'workerScripts' => [
-            // 'hello' is the worker-type or group, add as many groups as you like...
+            // Unique name/identifier for each pool:
             'hello' => [
-                // The workers classname including namespace:
-                'classname' => 'Nekudo\Angela\Demo\HelloAngela',
-                // Workers filename. Worker has to be placed insite the "worker path" defined above:
-                'filename' => 'HelloAngela.php',
-                // Defines how many instances of this worker will be started:
-                'instances' => 1,
+
+                // Path to the worker file:
+                'worker_file' => __DIR__ . '/worker/hello.php',
+
+                // Number of child processes created on startup:
+                'cp_start' => 5,
+
+                // Maximum number of child processes:
+                'cp_max' => 10,
             ],
         ]
     ],
