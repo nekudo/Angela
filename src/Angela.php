@@ -18,11 +18,6 @@ class Angela
     protected $config;
 
     /**
-     * @var string $logPath Path to store worker log files.
-     */
-    protected $logPath;
-
-    /**
      * Holds all the worker processes.
      *
      * @var array $processes
@@ -42,7 +37,6 @@ class Angela
         }
         $this->config = $config['angela'];
         $this->loop = Factory::create();
-        $this->loop->run();
     }
 
     /**
@@ -65,6 +59,15 @@ class Angela
         $this->loop->run();
     }
 
+    /**
+     * Starts child processes as defined in pool configuration.
+     *
+     * HINT: We need to prepend php command with "exec" to avoid sh-wrapper.
+     * @see https://github.com/symfony/symfony/issues/5759
+     *
+     * @param string $poolName
+     * @param array $poolConfig
+     */
     protected function startPool(string $poolName, array $poolConfig)
     {
         if (!isset($poolConfig['worker_file'])) {
@@ -73,7 +76,7 @@ class Angela
         $this->processes[$poolName] = [];
         $processesToStart = $poolConfig['cp_start'] ?? 5;
         for ($i = 0; $i < $processesToStart; $i++) {
-            $process = new Process('php ' . $poolConfig['worker_file']);
+            $process = new Process('exec php ' . $poolConfig['worker_file']);
             $process->start($this->loop);
             array_push($this->processes[$poolName], $process);
         }

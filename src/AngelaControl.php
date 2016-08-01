@@ -1,7 +1,5 @@
 <?php namespace Nekudo\Angela;
 
-use React\EventLoop\Factory;
-
 class AngelaControl
 {
     protected $loop;

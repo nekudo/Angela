@@ -12,8 +12,7 @@
     ],
     "require": {
         "php": ">=5.5.0",
-        "react/child-process": "^0.4.0",
-        "predis/predis": "^1.1"
+        "react/child-process": "^0.4.0"
     },
     "autoload": {
         "psr-4": {

@@ -5,10 +5,6 @@ return [
         // path to store log files:
         'logPath' => __DIR__ . '/logs/',
 
-        'redis' => [
-            'dsn' => 'tcp://127.0.0.1:6379',
-        ],
-
         // Process pool configuration. Add as many pools as you like.
         'pool' => [
 
@@ -20,9 +16,6 @@ return [
 
                 // Number of child processes created on startup:
                 'cp_start' => 5,
-
-                // Maximum number of child processes:
-                'cp_max' => 10,
             ],
         ]
     ],
