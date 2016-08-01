@@ -11,8 +11,9 @@
         }
     ],
     "require": {
-        "php": ">=5.5.0",
-        "react/child-process": "^0.4.0"
+        "php": ">=7.0.0",
+        "react/child-process": "^0.4.0",
+        "php-amqplib/php-amqplib": "2.6.*"
     },
     "autoload": {
         "psr-4": {

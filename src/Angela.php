@@ -2,6 +2,7 @@
 
 use React\ChildProcess\Process;
 use React\EventLoop\Factory;
+use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 /**
  * A simple gearman worker manager.
@@ -37,6 +38,25 @@ class Angela
         }
         $this->config = $config['angela'];
         $this->loop = Factory::create();
+
+        $this->connectToBroker();
+    }
+
+    public function connectToBroker()
+    {
+        $connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');
+        $channel = $connection->channel();
+        $channel->queue_declare('angela_ctl', false, false, false, false);
+        $channel->basic_consume('angela_ctl', '', false, true, false, false, [$this, 'onControlMessage']);
+        $this->loop->addPeriodicTimer(1, function () use ($channel) {
+            $channel->wait(null, true);
+        });
+        $this->loop->addPeriodicTimer(1, [$this, 'onControlMessage']);
+    }
+
+    public function onControlMessage($message)
+    {
+        echo 'f00';
     }
 
     /**
