@@ -1,5 +1,7 @@
 <?php namespace Nekudo\Angela;
 
+use Nekudo\Angela\Broker\BrokerClient;
+use Nekudo\Angela\Broker\RabbitmqClient;
 use React\ChildProcess\Process;
 use React\EventLoop\Factory;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
@@ -26,9 +28,15 @@ class Angela
     protected $processes = [];
 
     /**
-     * @var \React\EventLoop\ExtEventLoop|\React\EventLoop\LibEventLoop|\React\EventLoop\LibEvLoop|\React\EventLoop\StreamSelectLoop $loop
+     * @var \React\EventLoop\ExtEventLoop|\React\EventLoop\LibEventLoop
+     * |\React\EventLoop\LibEvLoop|\React\EventLoop\StreamSelectLoop $loop
      */
     protected $loop;
+
+    /**
+     * @var BrokerClient $broker;
+     */
+    protected $broker;
 
 
     public function __construct(array $config)
@@ -40,23 +48,27 @@ class Angela
         $this->loop = Factory::create();
 
         $this->connectToBroker();
+        $this->loop->addPeriodicTimer(1, [$this, 'checkControlMessage']);
     }
 
     public function connectToBroker()
     {
-        $connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');
-        $channel = $connection->channel();
-        $channel->queue_declare('angela_ctl', false, false, false, false);
-        $channel->basic_consume('angela_ctl', '', false, true, false, false, [$this, 'onControlMessage']);
-        $this->loop->addPeriodicTimer(1, function () use ($channel) {
-            $channel->wait(null, true);
-        });
-        $this->loop->addPeriodicTimer(1, [$this, 'onControlMessage']);
+        switch ($this->config['broker']['type']) {
+            case 'rabbitmq':
+                $this->broker = new RabbitmqClient();
+                $this->broker->connect($this->config['broker']['credentials']);
+                $this->broker->initQueue('angela_ctrl');
+                break;
+            default:
+                // @todo throw unknown broker exception
+                break;
+        }
     }
 
-    public function onControlMessage($message)
+    public function checkControlMessage()
     {
-        echo 'f00';
+        $message = $this->broker->getLastMessageFromQueue('angela_ctrl');
+        var_dump($message);
     }
 
     /**

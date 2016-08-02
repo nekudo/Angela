@@ -5,6 +5,17 @@ return [
         // path to store log files:
         'logPath' => __DIR__ . '/logs/',
 
+        'broker' => [
+            'type' => 'rabbitmq',
+
+            'credentials' => [
+                'host' => 'localhost',
+                'port' => 5672,
+                'username' => 'guest',
+                'password' => 'guest',
+            ],
+        ],
+
         // Process pool configuration. Add as many pools as you like.
         'pool' => [
 
