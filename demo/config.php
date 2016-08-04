@@ -8,6 +8,10 @@ return [
         'broker' => [
             'type' => 'rabbitmq',
 
+            'queues' => [
+                'cmd' => 'angela_cmd_1',
+            ],
+
             'credentials' => [
                 'host' => 'localhost',
                 'port' => 5672,

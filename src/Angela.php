@@ -4,7 +4,6 @@ use Nekudo\Angela\Broker\BrokerClient;
 use Nekudo\Angela\Broker\RabbitmqClient;
 use React\ChildProcess\Process;
 use React\EventLoop\Factory;
-use PhpAmqpLib\Connection\AMQPStreamConnection;
 
 /**
  * A simple gearman worker manager.
@@ -45,19 +44,28 @@ class Angela
             throw new \InvalidArgumentException('Configuration can not be empty.');
         }
         $this->config = $config['angela'];
+
+        // create main event loop:
         $this->loop = Factory::create();
 
+        // connect to message broker:
         $this->connectToBroker();
-        $this->loop->addPeriodicTimer(1, [$this, 'checkControlMessage']);
+
+        // listen for angela control commands:
+        $this->loop->addPeriodicTimer(1, [$this, 'onCommand']);
     }
 
+    /**
+     * Connects to message broker to be able to receive external commands.
+     */
     public function connectToBroker()
     {
-        switch ($this->config['broker']['type']) {
+        $brokerConfig = $this->config['broker'];
+        switch ($brokerConfig['type']) {
             case 'rabbitmq':
-                $this->broker = new RabbitmqClient();
-                $this->broker->connect($this->config['broker']['credentials']);
-                $this->broker->initQueue('angela_ctrl');
+                $this->broker = new RabbitmqClient;
+                $this->broker->connect($brokerConfig['credentials']);
+                $this->broker->setCommandQueue($brokerConfig['queues']['cmd']);
                 break;
             default:
                 // @todo throw unknown broker exception
@@ -65,14 +73,30 @@ class Angela
         }
     }
 
-    public function checkControlMessage()
+    /**
+     * Checks message broker for new command and calls action if command is received.
+     *
+     * @return bool
+     */
+    public function onCommand() : bool
     {
-        $message = $this->broker->getLastMessageFromQueue('angela_ctrl');
-        var_dump($message);
+        $command = $this->broker->getCommand();
+        if (empty($command)) {
+            return true;
+        }
+        switch ($command) {
+            case 'shutdown':
+                $this->stop();
+                break;
+            default:
+                // @todo throw unknown command error
+                break;
+        }
+        return true;
     }
 
     /**
-     * Startup workers.
+     * Startup worker processes and run main loop.
      *
      * @return bool
      */
@@ -89,6 +113,20 @@ class Angela
 
         // run
         $this->loop->run();
+    }
+
+    /**
+     * Stop all child processes (workers) and stop main loop.
+     */
+    public function stop()
+    {
+        // stop worker pools
+        foreach ($this->config['pool'] as $poolName => $poolConfig) {
+            $this->stopPool($poolName);
+        }
+
+        // stop main loop
+        $this->loop->stop();
     }
 
     /**
@@ -112,5 +150,23 @@ class Angela
             $process->start($this->loop);
             array_push($this->processes[$poolName], $process);
         }
+    }
+
+    /**
+     * Terminates all child processes of given pool.
+     *
+     * @param string $poolName
+     * @return bool
+     */
+    protected function stopPool(string $poolName) : bool
+    {
+        if (empty($this->processes[$poolName])) {
+            return true;
+        }
+        foreach ($this->processes[$poolName] as $process) {
+            /** @var Process $process */
+            $process->terminate();
+        }
+        return true;
     }
 }
