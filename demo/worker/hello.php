@@ -1,11 +1,12 @@
 <?php
+
 require_once __DIR__ . '/../../vendor/autoload.php';
 
-$loop = React\EventLoop\Factory::create();
+class Hello extends \Nekudo\Angela\Worker\Worker
+{
 
-$read = new \React\Stream\Stream(STDIN, $loop);
-$read->on('data', function ($data) use ($loop) {
-    echo $data . PHP_EOL;
-});
+}
 
-$loop->run();
+
+$worker = new Hello;
+$worker->run();

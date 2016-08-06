@@ -73,6 +73,11 @@ class Angela
         }
     }
 
+    protected function onProcessOut($output)
+    {
+        echo $output . PHP_EOL;
+    }
+
     /**
      * Checks message broker for new command and calls action if command is received.
      *
@@ -143,11 +148,19 @@ class Angela
         if (!isset($poolConfig['worker_file'])) {
             throw new \RuntimeException('Path to worker file not set in pool config.');
         }
+
         $this->processes[$poolName] = [];
         $processesToStart = $poolConfig['cp_start'] ?? 5;
         for ($i = 0; $i < $processesToStart; $i++) {
             $process = new Process('exec php ' . $poolConfig['worker_file']);
             $process->start($this->loop);
+            $process->stdout->on('data', function ($output) {
+                $this->onProcessOut($output);
+            });
+            $process->stdin->write(json_encode([
+                'cmd' => 'brokerConnect',
+                'config' => $this->config['broker']
+            ]));
             array_push($this->processes[$poolName], $process);
         }
     }
