@@ -53,6 +53,18 @@ class Angela
 
         // listen for angela control commands:
         $this->loop->addPeriodicTimer(1, [$this, 'onCommand']);
+
+        $this->loop->addPeriodicTimer(3, [$this, 'pingWorker']);
+    }
+
+    public function pingWorker()
+    {
+        foreach ($this->config['pool'] as $poolName => $poolConfig) {
+            foreach ($this->processes[$poolName] as $process) {
+                /** @var Process $process */
+                $process->stdin->write('ping');
+            }
+        }
     }
 
     /**
@@ -158,7 +170,7 @@ class Angela
                 $this->onProcessOut($output);
             });
             $process->stdin->write(json_encode([
-                'cmd' => 'brokerConnect',
+                'cmd' => 'broker:connect',
                 'config' => $this->config['broker']
             ]));
             array_push($this->processes[$poolName], $process);

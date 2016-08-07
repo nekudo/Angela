@@ -12,7 +12,12 @@ abstract class Worker
 
     protected $readStream;
 
+    /**
+     * @var \Nekudo\Angela\Broker\BrokerClient $broker
+     */
     protected $broker;
+
+    protected $tasks = [];
 
     public function __construct()
     {
@@ -26,17 +31,38 @@ abstract class Worker
         $this->readStream->on('data', function ($data) {
             $this->onCommand($data);
         });
+
+        // fetch messages from task-queues:
+        $this->loop->addPeriodicTimer(0.2, [$this, 'consume']);
+    }
+
+    public function registerTask(string $taskName, callable $callback)
+    {
+        $this->tasks[$taskName] = $callback;
     }
 
     public function onCommand(string $input)
     {
         $command = json_decode($input, true);
         switch ($command['cmd']) {
-            case 'brokerConnect':
+            case 'broker:connect':
                 $this->connectToBroker($command['config']);
                 break;
             default:
                 break;
+        }
+    }
+
+    public function consume()
+    {
+        if (empty($this->tasks)) {
+            return false;
+        }
+        foreach ($this->tasks as $queueName => $callback) {
+            $msg = $this->broker->getLastMessageFromQueue($queueName);
+            if (!empty($msg)) {
+                call_user_func($callback, $msg);
+            }
         }
     }
 
