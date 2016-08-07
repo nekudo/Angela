@@ -47,18 +47,6 @@ class RabbitmqClient implements BrokerClient
         return (!empty($res));
     }
 
-    public function consumeQueue(string $queueName, callable $callback)
-    {
-        $this->initQueue($queueName);
-        $this->channel->basic_consume($queueName, '', false, false, false, false, $callback);
-    }
-
-    public function wait()
-    {
-        echo 'waiting...';
-        $this->channel->wait(null, true);
-    }
-
     /**
      * @inheritdoc
      */

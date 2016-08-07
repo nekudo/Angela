@@ -52,19 +52,7 @@ class Angela
         $this->connectToBroker();
 
         // listen for angela control commands:
-        $this->loop->addPeriodicTimer(1, [$this, 'onCommand']);
-
-        $this->loop->addPeriodicTimer(3, [$this, 'pingWorker']);
-    }
-
-    public function pingWorker()
-    {
-        foreach ($this->config['pool'] as $poolName => $poolConfig) {
-            foreach ($this->processes[$poolName] as $process) {
-                /** @var Process $process */
-                $process->stdin->write('ping');
-            }
-        }
+        $this->loop->addPeriodicTimer(0.5, [$this, 'onCommand']);
     }
 
     /**
@@ -85,9 +73,21 @@ class Angela
         }
     }
 
-    protected function onProcessOut($output)
+    /**
+     * Handles data received from child procresses.
+     *
+     * @todo Add some kind of logging e.g.
+     *
+     * @param string $output
+     * @return bool
+     */
+    protected function onProcessOut(string $output) : bool
     {
+        if (empty($output)) {
+            return true;
+        }
         echo $output . PHP_EOL;
+        return true;
     }
 
     /**
@@ -164,15 +164,21 @@ class Angela
         $this->processes[$poolName] = [];
         $processesToStart = $poolConfig['cp_start'] ?? 5;
         for ($i = 0; $i < $processesToStart; $i++) {
+            // start child process:
             $process = new Process('exec php ' . $poolConfig['worker_file']);
             $process->start($this->loop);
+
+            // listen to output from child processs:
             $process->stdout->on('data', function ($output) {
                 $this->onProcessOut($output);
             });
+
+            // send command to connect to broker:
             $process->stdin->write(json_encode([
                 'cmd' => 'broker:connect',
                 'config' => $this->config['broker']
             ]));
+
             array_push($this->processes[$poolName], $process);
         }
     }

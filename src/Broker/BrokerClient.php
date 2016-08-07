@@ -20,16 +20,6 @@ interface BrokerClient
      */
     public function initQueue(string $queueName) : bool;
 
-
-    /**
-     * Registers a callback to a given queue.
-     *
-     * @param string $queueName
-     * @param callable $callback
-     * @return mixed
-     */
-    public function consumeQueue(string $queueName, callable $callback);
-
     /**
      * Fetches last message from queue.
      *
