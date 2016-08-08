@@ -2,9 +2,6 @@
 return [
     'angela' => [
 
-        // path to store log files:
-        'logPath' => __DIR__ . '/logs/',
-
         'broker' => [
             'type' => 'rabbitmq',
 

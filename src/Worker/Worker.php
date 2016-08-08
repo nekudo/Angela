@@ -2,9 +2,9 @@
 
 namespace Nekudo\Angela\Worker;
 
+use Nekudo\Angela\Broker\BrokerFactory;
 use React\EventLoop\Factory;
 use React\Stream\Stream;
-use Nekudo\Angela\Broker\RabbitmqClient;
 
 abstract class Worker
 {
@@ -105,17 +105,15 @@ abstract class Worker
 
     /**
      * Connects to message broker.
+     *
+     * @param array $brokerConfig
      */
     protected function connectToBroker(array $brokerConfig)
     {
-        switch ($brokerConfig['type']) {
-            case 'rabbitmq':
-                $this->broker = new RabbitmqClient;
-                $this->broker->connect($brokerConfig['credentials']);
-                break;
-            default:
-                // @todo throw unknown broker exception
-                break;
+        $brokerFactory = new BrokerFactory($brokerConfig);
+        $this->broker = $brokerFactory->create();
+        foreach (array_keys($this->tasks) as $queueName) {
+            $this->broker->initQueue($queueName);
         }
     }
 

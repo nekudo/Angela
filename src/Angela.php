@@ -1,7 +1,7 @@
 <?php namespace Nekudo\Angela;
 
 use Nekudo\Angela\Broker\BrokerClient;
-use Nekudo\Angela\Broker\RabbitmqClient;
+use Nekudo\Angela\Broker\BrokerFactory;
 use React\ChildProcess\Process;
 use React\EventLoop\Factory;
 
@@ -60,21 +60,12 @@ class Angela
      */
     public function connectToBroker()
     {
-        $brokerConfig = $this->config['broker'];
-        switch ($brokerConfig['type']) {
-            case 'rabbitmq':
-                $this->broker = new RabbitmqClient;
-                $this->broker->connect($brokerConfig['credentials']);
-                $this->broker->setCommandQueue($brokerConfig['queues']['cmd']);
-                break;
-            default:
-                // @todo throw unknown broker exception
-                break;
-        }
+        $brokerFactory = new BrokerFactory($this->config['broker']);
+        $this->broker = $brokerFactory->create();
     }
 
     /**
-     * Handles data received from child procresses.
+     * Handles data received from child processes.
      *
      * @todo Add some kind of logging e.g.
      *

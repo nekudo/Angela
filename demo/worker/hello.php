@@ -13,6 +13,7 @@ class Hello extends \Nekudo\Angela\Worker\Worker
 
 $worker = new Hello;
 $worker->registerTask('fooTask', [$worker, 'fooTask']);
+
 /*
 $worker->onCommand((json_encode([
     'cmd' => 'broker:connect',
@@ -32,4 +33,6 @@ $worker->onCommand((json_encode([
         ],
 ])));
 */
+
+
 $worker->run();
