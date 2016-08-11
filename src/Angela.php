@@ -1,12 +1,14 @@
 <?php namespace Nekudo\Angela;
 
+use Katzgrau\KLogger\Logger;
 use Nekudo\Angela\Broker\BrokerClient;
 use Nekudo\Angela\Broker\BrokerFactory;
+use Nekudo\Angela\Logger\LoggerFactory;
 use React\ChildProcess\Process;
-use React\EventLoop\Factory;
+use React\EventLoop\Factory as LoopFactory;
 
 /**
- * A simple gearman worker manager.
+ * A microservice/worker framework.
  *
  * @author Simon Samtleben <simon@nekudo.com>
  * @license https://github.com/nekudo/Angela/blob/master/LICENSE MIT
@@ -37,6 +39,11 @@ class Angela
      */
     protected $broker;
 
+    /**
+     * @var Logger $logger
+     */
+    protected $logger;
+
 
     public function __construct(array $config)
     {
@@ -45,8 +52,13 @@ class Angela
         }
         $this->config = $config['angela'];
 
+        $loggerFactory = new LoggerFactory($this->config['logger']);
+        $this->logger = $loggerFactory->create();
+        unset($loggerFactory);
+        $this->logger->debug('Logger initialized');
+
         // create main event loop:
-        $this->loop = Factory::create();
+        $this->loop = LoopFactory::create();
 
         // connect to message broker:
         $this->connectToBroker();
@@ -60,14 +72,14 @@ class Angela
      */
     public function connectToBroker()
     {
+        $this->logger->debug('Connecting to message broker');
         $brokerFactory = new BrokerFactory($this->config['broker']);
         $this->broker = $brokerFactory->create();
+        unset($brokerFactory);
     }
 
     /**
      * Handles data received from child processes.
-     *
-     * @todo Add some kind of logging e.g.
      *
      * @param string $output
      * @return bool
@@ -77,7 +89,7 @@ class Angela
         if (empty($output)) {
             return true;
         }
-        echo $output . PHP_EOL;
+        $this->logger->debug('Child process output: ' . $output);
         return true;
     }
 
@@ -92,12 +104,13 @@ class Angela
         if (empty($command)) {
             return true;
         }
+        $this->logger->debug('Received command from broker: ' . $command);
         switch ($command) {
             case 'shutdown':
                 $this->stop();
                 break;
             default:
-                // @todo throw unknown command error
+                $this->logger->warning('Received invalid command on command queue. Command received: ' . $command);
                 break;
         }
         return true;
@@ -111,7 +124,7 @@ class Angela
     public function start()
     {
         if (empty($this->config['pool'])) {
-            throw new \RuntimeException('No worker pool defined.');
+            throw new \RuntimeException('No worker pool defined in configuration.');
         }
 
         // fire up processes:
@@ -148,6 +161,7 @@ class Angela
      */
     protected function startPool(string $poolName, array $poolConfig)
     {
+        $this->logger->debug('Starting pool ' . $poolName);
         if (!isset($poolConfig['worker_file'])) {
             throw new \RuntimeException('Path to worker file not set in pool config.');
         }
@@ -156,21 +170,25 @@ class Angela
         $processesToStart = $poolConfig['cp_start'] ?? 5;
         for ($i = 0; $i < $processesToStart; $i++) {
             // start child process:
-            $process = new Process('exec php ' . $poolConfig['worker_file']);
-            $process->start($this->loop);
+            try {
+                $process = new Process('exec php ' . $poolConfig['worker_file']);
+                $process->start($this->loop);
 
-            // listen to output from child processs:
-            $process->stdout->on('data', function ($output) {
-                $this->onProcessOut($output);
-            });
+                // listen to output from child processs:
+                $process->stdout->on('data', function ($output) {
+                    $this->onProcessOut($output);
+                });
 
-            // send command to connect to broker:
-            $process->stdin->write(json_encode([
-                'cmd' => 'broker:connect',
-                'config' => $this->config['broker']
-            ]));
+                // send command to connect to broker:
+                $process->stdin->write(json_encode([
+                    'cmd' => 'broker:connect',
+                    'config' => $this->config['broker']
+                ]));
 
-            array_push($this->processes[$poolName], $process);
+                array_push($this->processes[$poolName], $process);
+            } catch (\Exception $e) {
+                $this->logger->critical('Could not start worker process. Exception: ' . $e->getMessage());
+            }
         }
     }
 

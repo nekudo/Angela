@@ -2,6 +2,13 @@
 return [
     'angela' => [
 
+        'logger' => [
+            'path' => __DIR__ . '/logs/',
+
+            // possible levels are: emergency, alert, critical, error, warning, notice, info, debug
+            'level' => 'debug',
+        ],
+
         'broker' => [
             'type' => 'rabbitmq',
 

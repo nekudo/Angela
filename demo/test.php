@@ -13,7 +13,7 @@ $channel->basic_publish($msg, '', 'fooTask');
 */
 
 $channel->queue_declare('angela_cmd_1', false, false, false, false);
-$msg = new AMQPMessage('shutdown');
+$msg = new AMQPMessage('shutdownxxx');
 $channel->basic_publish($msg, '', 'angela_cmd_1');
 
 echo "command send...\n";
