@@ -179,10 +179,10 @@ class Angela
                     $this->onProcessOut($output);
                 });
 
-                // send command to connect to broker:
+                // init child process and inject config:
                 $process->stdin->write(json_encode([
-                    'cmd' => 'broker:connect',
-                    'config' => $this->config['broker']
+                    'cmd' => 'init',
+                    'data' => $this->config,
                 ]));
 
                 array_push($this->processes[$poolName], $process);
