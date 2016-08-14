@@ -65,6 +65,9 @@ class Angela
 
         // listen for angela control commands:
         $this->loop->addPeriodicTimer(0.5, [$this, 'onCommand']);
+
+        // periodically check workers:
+        $this->loop->addPeriodicTimer(5, [$this, 'checkWorkerStatus']);
     }
 
     /**
@@ -139,7 +142,7 @@ class Angela
     /**
      * Stop all child processes (workers) and stop main loop.
      */
-    public function stop()
+    protected function stop()
     {
         // stop worker pools
         foreach ($this->config['pool'] as $poolName => $poolConfig) {
@@ -151,10 +154,35 @@ class Angela
     }
 
     /**
-     * Starts child processes as defined in pool configuration.
+     * Checks if worker processes are still running.
+     */
+    public function checkWorkerStatus()
+    {
+        foreach ($this->config['pool'] as $poolName => $poolConfig) {
+            $this->checkPoolStatus($poolName);
+        }
+    }
+
+    /**
+     * Checks if all processes in a pool are still running. If not processes are restarted.
      *
-     * HINT: We need to prepend php command with "exec" to avoid sh-wrapper.
-     * @see https://github.com/symfony/symfony/issues/5759
+     * @param string $poolName
+     */
+    protected function checkPoolStatus(string $poolName)
+    {
+        $poolConfig = $this->config['pool'][$poolName];
+        foreach ($this->processes[$poolName] as $i => $process) {
+            /** @var Process $process */
+            if ($process->isRunning() === false) {
+                unset($process, $this->processes[$poolName][$i]);
+                $process = $this->startProcess($poolConfig['worker_file']);
+                $this->processes[$poolName][$i] = $process;
+            }
+        }
+    }
+
+    /**
+     * Starts child processes as defined in pool configuration.
      *
      * @param string $poolName
      * @param array $poolConfig
@@ -171,20 +199,7 @@ class Angela
         for ($i = 0; $i < $processesToStart; $i++) {
             // start child process:
             try {
-                $process = new Process('exec php ' . $poolConfig['worker_file']);
-                $process->start($this->loop);
-
-                // listen to output from child processs:
-                $process->stdout->on('data', function ($output) {
-                    $this->onProcessOut($output);
-                });
-
-                // init child process and inject config:
-                $process->stdin->write(json_encode([
-                    'cmd' => 'init',
-                    'data' => $this->config,
-                ]));
-
+                $process = $this->startProcess($poolConfig['worker_file']);
                 array_push($this->processes[$poolName], $process);
             } catch (\Exception $e) {
                 $this->logger->critical('Could not start worker process. Exception: ' . $e->getMessage());
@@ -208,5 +223,33 @@ class Angela
             $process->terminate();
         }
         return true;
+    }
+
+    /**
+     * Starts a single child process/worker.
+     *
+     * HINT: We need to prepend php command with "exec" to avoid sh-wrapper.
+     * @see https://github.com/symfony/symfony/issues/5759
+     *
+     * @param string $pathToFile
+     * @return Process
+     */
+    protected function startProcess(string $pathToFile) : Process
+    {
+        $process = new Process('exec php ' . $pathToFile);
+        $process->start($this->loop);
+
+        // listen to output from child processs:
+        $process->stdout->on('data', function ($output) {
+            $this->onProcessOut($output);
+        });
+
+        // init child process and inject config:
+        $process->stdin->write(json_encode([
+            'cmd' => 'init',
+            'data' => $this->config,
+        ]));
+
+        return $process;
     }
 }

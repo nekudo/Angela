@@ -23,9 +23,7 @@ class LoggerFactory
         if (!isset($this->loggerConfig['path'])) {
             throw new \RuntimeException('Path for logfiles not set in configuration.');
         }
-        if (!isset($this->loggerConfig['level'])) {
-            $this->loggerConfig['level'] = 'warning';
-        }
+        $this->loggerConfig['level'] = $this->loggerConfig['level'] ?? 'warning';
         if (!$this->isValidLogLevel($this->loggerConfig['level'])) {
             $this->loggerConfig['level'] = 'warning';
         }
