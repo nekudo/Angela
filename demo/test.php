@@ -1,6 +1,20 @@
 <?php
 require_once __DIR__ . '/../vendor/autoload.php';
 
+$config = include __DIR__ . '/config.php';
+$brokerFactory = new \Nekudo\Angela\Broker\BrokerFactory($config['angela']['broker']);
+$brokerClient = $brokerFactory->create();
+
+print_r($brokerClient);
+
+exit;
+
+
+
+
+
+
+
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Message\AMQPMessage;
 $connection = new AMQPStreamConnection('localhost', 5672, 'guest', 'guest');

@@ -1,5 +1,7 @@
 <?php
 
+namespace Nekudo\Angela\Demo;
+
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 class Hello extends \Nekudo\Angela\Worker\Worker

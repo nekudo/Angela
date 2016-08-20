@@ -43,4 +43,23 @@ interface BrokerClient
      * @return string
      */
     public function getCommand() : string;
+
+    
+    /**
+     * Runs a single job and directly returns the result/response
+     *
+     * @param string $jobName Name of job to to. Must match queue name.
+     * @param string $payload Data to send to worker.
+     * @return string Result of the job
+     */
+    public function do(string $jobName, string $payload) : string;
+
+    /**
+     * Runs a job in background.
+     *
+     * @param string $jobName Name of job to to. Must match queue name.
+     * @param string $payload Data to send to worker.
+     * @return string A job handle
+     */
+    public function doBackground(string $jobName, array $payload) : string;
 }

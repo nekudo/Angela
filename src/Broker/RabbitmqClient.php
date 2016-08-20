@@ -77,4 +77,20 @@ class RabbitmqClient implements BrokerClient
         // @todo throw error if cmd queue name not set
         return $this->getLastMessageFromQueue($this->cmdQueueName);
     }
+
+    /**
+     * @inheritdoc
+     */
+    public function do(string $jobName, string $payload) : string
+    {
+        return '';
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function doBackground(string $jobName, array $payload) : string
+    {
+        return '';
+    }
 }
