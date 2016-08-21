@@ -8,20 +8,22 @@ class Hello extends \Nekudo\Angela\Worker\Worker
 {
     public function fooTask($message)
     {
-        echo "executing task. received: " . $message . PHP_EOL;
+        $this->logger->debug('Executing task "fooTask" ...');
+        $this->broker->ack($message);
     }
 }
 
 
 $worker = new Hello;
 $worker->registerTask('fooTask', [$worker, 'fooTask']);
+$worker->run();
 
 /*
 $worker->onCommand((json_encode([
     'cmd' => 'init',
     'data' => [
         'logger' => [
-            'path' => __DIR__ . '/logs/',
+            'path' => __DIR__ . '/../logs/',
 
             // possible levels are: emergency, alert, critical, error, warning, notice, info, debug
             'level' => 'debug',
@@ -49,7 +51,7 @@ $worker->onCommand((json_encode([
             'hello' => [
 
                 // Path to the worker file:
-                'worker_file' => __DIR__ . '/worker/hello.php',
+                'worker_file' => __DIR__ . '/hello.php',
 
                 // Number of child processes created on startup:
                 'cp_start' => 5,
@@ -58,6 +60,3 @@ $worker->onCommand((json_encode([
     ],
 ])));
 */
-
-
-$worker->run();

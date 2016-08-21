@@ -13,6 +13,13 @@ interface BrokerClient
     public function connect(array $credentials) : bool;
 
     /**
+     * Closes connection to message broker.
+     *
+     * @return mixed
+     */
+    public function close();
+
+    /**
      * Defines a new queue to be used on broker.
      *
      * @param string $queueName
@@ -44,6 +51,18 @@ interface BrokerClient
      */
     public function getCommand() : string;
 
+    /**
+     * Waits for new messages on given queue and executes callback if messages are received.
+     *
+     * @param string $queueName
+     * @param callable $callback
+     */
+    public function consumeQueue(string $queueName, callable $callback);
+
+    /**
+     * Main loop to wait for new jobs.
+     */
+    public function wait();
     
     /**
      * Runs a single job and directly returns the result/response
@@ -52,7 +71,7 @@ interface BrokerClient
      * @param string $payload Data to send to worker.
      * @return string Result of the job
      */
-    public function do(string $jobName, string $payload) : string;
+    public function doJob(string $jobName, string $payload) : string;
 
     /**
      * Runs a job in background.
@@ -61,5 +80,5 @@ interface BrokerClient
      * @param string $payload Data to send to worker.
      * @return string A job handle
      */
-    public function doBackground(string $jobName, array $payload) : string;
+    public function doBackgroundJob(string $jobName, string $payload) : string;
 }

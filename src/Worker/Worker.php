@@ -11,13 +11,6 @@ use React\Stream\Stream;
 abstract class Worker
 {
     /**
-     * Will be "true" once init method was called.
-     *
-     * @var bool $isInitialized
-     */
-    public $isInitialized = false;
-
-    /**
      * @var array $config
      */
     protected $config = [];
@@ -62,9 +55,6 @@ abstract class Worker
         $this->readStream->on('data', function ($data) {
             $this->onCommand($data);
         });
-
-        // fetch messages from job queues:
-        $this->loop->addPeriodicTimer(0.2, [$this, 'consume']);
     }
 
     /**
@@ -94,22 +84,13 @@ abstract class Worker
         }
         $message = json_decode($input, true);
         if (!isset($message['cmd'])) {
-            if ($this->isInitialized === true) {
-                $this->logger->warning('Invalid command message received.');
-            }
-            return false;
-        }
-        if ($this->isInitialized === true) {
-            $this->logger->debug('Received command: ' . $message['cmd']);
+            throw new \RuntimeException('Received invalid command frame.');
         }
         switch ($message['cmd']) {
             case 'init':
                 $this->init($message['data']);
                 break;
             default:
-                if ($this->isInitialized === true) {
-                    $this->logger->warning('Received unknown command.');
-                }
                 return false;
                 break;
         }
@@ -126,30 +107,32 @@ abstract class Worker
         $this->setConfig($config);
         $this->createLogger();
         $this->connectToBroker();
-        $this->isInitialized = true;
+        $this->closeInputStream();
+        $this->logger->debug('Worker initialization done. Waiting for jobs...');
+        $this->consume();
     }
 
     /**
-     * Checks all job queues for new jobs.
-     *
-     * @return bool
+     * Waits for new jobs.
      */
-    public function consume() : bool
+    public function consume()
     {
         if (empty($this->tasks)) {
-            if ($this->isInitialized === true) {
-                $this->logger->notice('Consume method called but no tasks registed.');
-            }
-            return false;
+            throw new \RuntimeException('Consume method called but no tasks registed.');
         }
         foreach ($this->tasks as $queueName => $callback) {
-            $msg = $this->broker->getLastMessageFromQueue($queueName);
-            if (empty($msg)) {
-                continue;
-            }
-            call_user_func($callback, $msg);
+            $this->broker->initQueue($queueName);
+            $this->broker->consumeQueue($queueName, $callback);
         }
-        return true;
+        $this->broker->wait();
+    }
+
+    protected function closeInputStream()
+    {
+        $this->readStream->close();
+        unset($this->readStream);
+        $this->loop->stop();
+        unset($this->loop);
     }
 
     /**

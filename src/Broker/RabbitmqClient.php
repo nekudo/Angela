@@ -4,6 +4,7 @@ namespace Nekudo\Angela\Broker;
 
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Message\AMQPMessage;
 
 class RabbitmqClient implements BrokerClient
 {
@@ -35,7 +36,17 @@ class RabbitmqClient implements BrokerClient
             $credentials['password']
         );
         $this->channel = $this->connection->channel();
+        $this->channel->basic_qos(null, 1, null);
         return true;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function close()
+    {
+        $this->channel->close();
+        $this->connection->close();
     }
 
     /**
@@ -72,6 +83,35 @@ class RabbitmqClient implements BrokerClient
     /**
      * @inheritdoc
      */
+    public function consumeQueue(string $queueName, callable $callback)
+    {
+        $this->initQueue($queueName);
+        $this->channel->basic_consume($queueName, '', false, false, false, false, $callback);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function wait()
+    {
+        while (count($this->channel->callbacks)) {
+            $this->channel->wait();
+        }
+    }
+
+    /**
+     * Confirms message was received.
+     *
+     * @param AMQPMessage $message
+     */
+    public function ack(AMQPMessage $message)
+    {
+        $this->channel->basic_ack($message->delivery_info['delivery_tag']);
+    }
+
+    /**
+     * @inheritdoc
+     */
     public function getCommand() : string
     {
         // @todo throw error if cmd queue name not set
@@ -81,7 +121,7 @@ class RabbitmqClient implements BrokerClient
     /**
      * @inheritdoc
      */
-    public function do(string $jobName, string $payload) : string
+    public function doJob(string $jobName, string $payload) : string
     {
         return '';
     }
@@ -89,7 +129,7 @@ class RabbitmqClient implements BrokerClient
     /**
      * @inheritdoc
      */
-    public function doBackground(string $jobName, array $payload) : string
+    public function doBackgroundJob(string $jobName, string $payload) : string
     {
         return '';
     }
