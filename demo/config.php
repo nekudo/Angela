@@ -14,6 +14,7 @@ return [
 
             'queues' => [
                 'cmd' => 'angela_cmd_1',
+                'callback' => 'angela_cb_1',
             ],
 
             'credentials' => [

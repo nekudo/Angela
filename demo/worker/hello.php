@@ -2,14 +2,37 @@
 
 namespace Nekudo\Angela\Demo;
 
+//use PhpAmqpLib\Message\AMQPMessage;
+
 require_once __DIR__ . '/../../vendor/autoload.php';
 
 class Hello extends \Nekudo\Angela\Worker\Worker
 {
+    /**
+     * @param AMQPMessage $message
+     */
     public function fooTask($message)
     {
+
         $this->logger->debug('Executing task "fooTask" ...');
+
+        $replyTo = $message->get('reply_to');
+        $callbackId = $message->get('correlation_id');
+        $type = $message->get('type');
+
+
         $this->broker->ack($message);
+
+
+        $this->logger->debug(
+            'ReplyTo: '. $replyTo .
+            ' CallbackId: ' . $callbackId .
+            ' Type: ' . $type
+        );
+        if ($type === 'normal') {
+            $this->broker->respond($callbackId, 'bar response...');
+        }
+
     }
 }
 

@@ -118,7 +118,7 @@ abstract class Worker
     public function consume()
     {
         if (empty($this->tasks)) {
-            throw new \RuntimeException('Consume method called but no tasks registed.');
+            throw new \RuntimeException('Consume method called but no tasks registered.');
         }
         foreach ($this->tasks as $queueName => $callback) {
             $this->broker->initQueue($queueName);

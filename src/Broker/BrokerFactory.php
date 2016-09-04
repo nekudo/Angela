@@ -31,6 +31,7 @@ class BrokerFactory
                 $broker = new RabbitmqClient;
                 $broker->connect($this->brokerConfig['credentials']);
                 $broker->setCommandQueue($this->brokerConfig['queues']['cmd']);
+                $broker->setCallbackQueue($this->brokerConfig['queues']['callback']);
                 break;
         }
         return $broker;

@@ -36,13 +36,22 @@ interface BrokerClient
     public function getLastMessageFromQueue(string $queueName) : string;
 
     /**
-     * Defines name of command queue and inits this queue.
+     * Defines name of command queue and initializes this queue.
      * The command queue is used to receive commands controlling Angela.
      *
      * @param string $queueName
      * @return bool
      */
     public function setCommandQueue(string $queueName) : bool;
+
+    /**
+     * Defines name of callback queue and initializes this queue.
+     * The callback queue is used to receive workers responses to jobs.
+     *
+     * @param string $queueName
+     * @return bool
+     */
+    public function setCallbackQueue(string $queueName) : bool;
 
     /**
      * Fetches a message from command queue.
@@ -81,4 +90,12 @@ interface BrokerClient
      * @return string A job handle
      */
     public function doBackgroundJob(string $jobName, string $payload) : string;
+
+    /**
+     * Respond to a received message/job.
+     *
+     * @param string $callbackId
+     * @param string $response
+     */
+    public function respond(string $callbackId, string $response);
 }
