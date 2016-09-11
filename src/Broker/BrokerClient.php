@@ -46,9 +46,9 @@ interface BrokerClient
     /**
      * Fetches a message from command queue.
      *
-     * @return string
+     * @return array
      */
-    public function getCommand() : string;
+    public function getCommand() : array;
 
     /**
      * Defines name of callback queue and initializes this queue.

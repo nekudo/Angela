@@ -103,17 +103,20 @@ class Angela
      */
     public function onCommand() : bool
     {
-        $command = $this->broker->getCommand();
-        if (empty($command)) {
+        $commandData = $this->broker->getCommand();
+        if (empty($commandData)) {
             return true;
         }
-        $this->logger->debug('Received command from broker: ' . $command);
-        switch ($command) {
+        $this->logger->debug('Received command from broker: ' . $commandData['command']);
+        switch ($commandData['command']) {
             case 'shutdown':
                 $this->stop();
+                $this->broker->respond($commandData['callbackId'], 'success');
                 break;
             default:
-                $this->logger->warning('Received invalid command on command queue. Command received: ' . $command);
+                $this->logger->warning(
+                    'Received invalid command on command queue. Command received: ' . $commandData['command']
+                );
                 break;
         }
         return true;

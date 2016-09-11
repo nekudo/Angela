@@ -88,6 +88,6 @@ class Message
      */
     public function getBody() : string
     {
-        return $this->type;
+        return $this->body;
     }
 }

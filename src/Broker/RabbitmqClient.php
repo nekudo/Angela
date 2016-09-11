@@ -86,24 +86,27 @@ class RabbitmqClient implements BrokerClient
      */
     public function sendCommand(string $command)
     {
-        // TODO: Implement sendCommand() method.
+        return $this->doJob($this->cmdQueueName, $command);
     }
 
     /**
      * @inheritdoc
      */
-    public function getCommand() : string
+    public function getCommand() : array
     {
         if (empty($this->cmdQueueName)) {
             throw new \RuntimeException('Can not fetch command. Command queue name not set.');
         }
         $message = $this->channel->basic_get($this->cmdQueueName);
         if (empty($message)) {
-            return '';
+            return [];
         }
         $angelaMessage = $this->convertMessage($message);
         $this->ack($angelaMessage);
-        return $angelaMessage->getBody();
+        return [
+            'command' => $angelaMessage->getBody(),
+            'callbackId' => $angelaMessage->getCallbackId()
+        ];
     }
 
     /**

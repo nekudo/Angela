@@ -43,7 +43,12 @@ class AngelaControl
 
     public function stop()
     {
-
+        /** @var \Nekudo\Angela\Broker\Message $response */
+        $response = $this->broker->sendCommand('shutdown');
+        if (empty($response)) {
+            return '';
+        }
+        return $response->getBody();
     }
 
     public function restart()
