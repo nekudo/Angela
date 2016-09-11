@@ -3,17 +3,25 @@ if (empty($argv)) {
     exit('Script can only be run in cli mode.' . PHP_EOL);
 }
 if (empty($argv[1])) {
-    exit('No action given. Valid actions are: start|stop|restart|keepalive|status' . PHP_EOL);
+    exit('No action given. Valid actions are: start|stop|restart|status' . PHP_EOL);
 }
 
-require_once __DIR__ . '/../vendor/autoload.php';
-
-
-/**
- *  Create a new AngelaControl instance.
- */
-$angelaControl = new \Nekudo\Angela\AngelaControl;
-$angelaControl->start();
+try {
+    require_once __DIR__ . '/../vendor/autoload.php';
+    $config = include __DIR__ . '/config.php';
+    $angelaControl = new \Nekudo\Angela\AngelaControl($config);
+    $action = $argv[1];
+    switch ($action) {
+        case 'start':
+            $angelaControl->start();
+            break;
+        default:
+            exit('Invalid action. Valid actions are: start|stop|restart|status' . PHP_EOL);
+            break;
+    }
+} catch (Exception $e) {
+    echo 'Error: ' . $e->getMessage() . PHP_EOL;
+}
 
 
 /**

@@ -2,6 +2,12 @@
 return [
     'angela' => [
 
+        // Path to your angela script:
+        'script_path' => __DIR__ . '/angela.php',
+
+        // Path to php-binary on your server:
+        'php_path' => 'php',
+
         'logger' => [
             'path' => __DIR__ . '/logs/',
 
@@ -29,13 +35,18 @@ return [
         'pool' => [
 
             // Unique name/identifier for each pool:
-            'hello' => [
+            'pool_a' => [
 
                 // Path to the worker file:
-                'worker_file' => __DIR__ . '/worker/hello.php',
+                'worker_file' => __DIR__ . '/worker/worker_a.php',
 
                 // Number of child processes created on startup:
-                'cp_start' => 5,
+                'cp_start' => 2,
+            ],
+
+            'pool_b' => [
+                'worker_file' => __DIR__ . '/worker/worker_b.php',
+                'cp_start' => 2,
             ],
         ]
     ],

@@ -239,7 +239,7 @@ class Angela
         $process = new Process('exec php ' . $pathToFile);
         $process->start($this->loop);
 
-        // listen to output from child processs:
+        // listen to output from child process:
         $process->stdout->on('data', function ($output) {
             $this->onProcessOut($output);
         });

@@ -29,6 +29,11 @@ class RabbitmqClient implements BrokerClient
     protected $callbackQueueName = '';
 
     /**
+     * @var array $queueCallbacks
+     */
+    protected $queueCallbacks = [];
+
+    /**
      * @var array $jobs
      */
     protected $jobs = [];
@@ -70,23 +75,35 @@ class RabbitmqClient implements BrokerClient
     /**
      * @inheritdoc
      */
-    public function getLastMessageFromQueue(string $queueName) : string
+    public function setCommandQueue(string $queueName) : bool
     {
-        $message = $this->channel->basic_get($queueName);
-        if (empty($message)) {
-            return '';
-        }
-        $this->channel->basic_ack($message->delivery_info['delivery_tag']);
-        return $message->body;
+        $this->cmdQueueName = $queueName;
+        return $this->initQueue($queueName);
     }
 
     /**
      * @inheritdoc
      */
-    public function setCommandQueue(string $queueName) : bool
+    public function sendCommand(string $command)
     {
-        $this->cmdQueueName = $queueName;
-        return $this->initQueue($queueName);
+        // TODO: Implement sendCommand() method.
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function getCommand() : string
+    {
+        if (empty($this->cmdQueueName)) {
+            throw new \RuntimeException('Can not fetch command. Command queue name not set.');
+        }
+        $message = $this->channel->basic_get($this->cmdQueueName);
+        if (empty($message)) {
+            return '';
+        }
+        $angelaMessage = $this->convertMessage($message);
+        $this->ack($angelaMessage);
+        return $angelaMessage->getBody();
     }
 
     /**
@@ -104,7 +121,21 @@ class RabbitmqClient implements BrokerClient
     public function consumeQueue(string $queueName, callable $callback)
     {
         $this->initQueue($queueName);
-        $this->channel->basic_consume($queueName, '', false, false, false, false, $callback);
+        $this->queueCallbacks[$queueName] = $callback;
+        $this->channel->basic_consume($queueName, '', false, false, false, false, [$this, 'onConsumeCallback']);
+    }
+
+    /**
+     * This method handles all callback messages for queues consumed by the client.
+     * Received messages are converted to AngelaMessages and than passed to the worker callback methods.
+     *
+     * @param AMQPMessage $message
+     */
+    public function onConsumeCallback(AMQPMessage $message)
+    {
+        $task = (string) $message->delivery_info['routing_key'];
+        $angelaMessage = $this->convertMessage($message);
+        call_user_func($this->queueCallbacks[$task], $angelaMessage);
     }
 
     /**
@@ -118,28 +149,17 @@ class RabbitmqClient implements BrokerClient
     }
 
     /**
-     * Confirms message was received.
-     *
-     * @param AMQPMessage $message
+     * @inheritdoc
      */
-    public function ack(AMQPMessage $message)
+    public function ack(Message $message)
     {
-        $this->channel->basic_ack($message->delivery_info['delivery_tag']);
+        $this->channel->basic_ack($message->getMessageId());
     }
 
     /**
      * @inheritdoc
      */
-    public function getCommand() : string
-    {
-        // @todo throw error if cmd queue name not set
-        return $this->getLastMessageFromQueue($this->cmdQueueName);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function doJob(string $jobName, string $payload) : string
+    public function doJob(string $jobName, string $payload) : Message
     {
         $callbackId = uniqid();
         $this->consumeQueue($this->callbackQueueName, [$this, 'onJobCallback']);
@@ -147,7 +167,6 @@ class RabbitmqClient implements BrokerClient
             $payload,
             [
                 'correlation_id' => $callbackId,
-                'reply_to' => $this->callbackQueueName,
                 'type' => 'normal',
             ]
         );
@@ -170,7 +189,6 @@ class RabbitmqClient implements BrokerClient
             $payload,
             [
                 'correlation_id' => $callbackId,
-                'reply_to' => $this->callbackQueueName,
                 'type' => 'background'
             ]
         );
@@ -191,19 +209,19 @@ class RabbitmqClient implements BrokerClient
     /**
      * Listens for messages on callback queue and handles them if callbackId is known.
      *
-     * @param AMQPMessage $message
+     * @param Message $message
      * @return bool
      */
-    public function onJobCallback(AMQPMessage $message) : bool
+    public function onJobCallback(Message $message) : bool
     {
         // Check if job is known
-        $callbackId = $message->get('correlation_id');
+        $callbackId = $message->getCallbackId();
         if (!isset($this->jobs[$callbackId])) {
             return false;
         }
 
         // If job is known store the response:
-        $this->jobs[$callbackId] = $message->getBody();
+        $this->jobs[$callbackId] = $message;
         $this->ack($message);
         return true;
     }
@@ -226,13 +244,31 @@ class RabbitmqClient implements BrokerClient
      * Fetches response for given callbackId from jobs array.
      *
      * @param string $callbackId
-     * @return string
+     * @return Message
      */
-    protected function getResponse(string $callbackId) : string
+    protected function getResponse(string $callbackId) : Message
     {
         if (!isset($this->jobs[$callbackId])) {
             throw new \RuntimeException('Unknown callback id.');
         }
         return $this->jobs[$callbackId];
+    }
+
+    /**
+     * Converts AMQP message to simple Angela message.
+     *
+     * @param AMQPMessage $message
+     * @return Message
+     */
+    protected function convertMessage(AMQPMessage $message) : Message
+    {
+        $angelaMessage = new Message;
+        $angelaMessage->setMessageId($message->delivery_info['delivery_tag']);
+        $angelaMessage->setCallbackId($message->get('correlation_id'));
+        if ($message->has('type')) {
+            $angelaMessage->setType($message->get('type'));
+        }
+        $angelaMessage->setBody($message->body);
+        return $angelaMessage;
     }
 }

@@ -28,14 +28,6 @@ interface BrokerClient
     public function initQueue(string $queueName) : bool;
 
     /**
-     * Fetches last message from queue.
-     *
-     * @param string $queueName
-     * @return string
-     */
-    public function getLastMessageFromQueue(string $queueName) : string;
-
-    /**
      * Defines name of command queue and initializes this queue.
      * The command queue is used to receive commands controlling Angela.
      *
@@ -43,6 +35,20 @@ interface BrokerClient
      * @return bool
      */
     public function setCommandQueue(string $queueName) : bool;
+
+    /**
+     * Sends a message on command queue.
+     *
+     * @param string $command
+     */
+    public function sendCommand(string  $command);
+
+    /**
+     * Fetches a message from command queue.
+     *
+     * @return string
+     */
+    public function getCommand() : string;
 
     /**
      * Defines name of callback queue and initializes this queue.
@@ -54,19 +60,19 @@ interface BrokerClient
     public function setCallbackQueue(string $queueName) : bool;
 
     /**
-     * Fetches a message from command queue.
-     *
-     * @return string
-     */
-    public function getCommand() : string;
-
-    /**
      * Waits for new messages on given queue and executes callback if messages are received.
      *
      * @param string $queueName
      * @param callable $callback
      */
     public function consumeQueue(string $queueName, callable $callback);
+
+    /**
+     * Confirms that a message was received.
+     *
+     * @param Message $message
+     */
+    public function ack(Message $message);
 
     /**
      * Main loop to wait for new jobs.
@@ -78,9 +84,9 @@ interface BrokerClient
      *
      * @param string $jobName Name of job to to. Must match queue name.
      * @param string $payload Data to send to worker.
-     * @return string Result of the job
+     * @return Message Result of the job
      */
-    public function doJob(string $jobName, string $payload) : string;
+    public function doJob(string $jobName, string $payload) : Message;
 
     /**
      * Runs a job in background.
