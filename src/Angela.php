@@ -113,6 +113,10 @@ class Angela
                 $this->stop();
                 $this->broker->respond($commandData['callbackId'], 'success');
                 break;
+            case 'status':
+                $statusData = $this->getStatus();
+                $this->broker->respond($commandData['callbackId'], json_encode($statusData));
+                break;
             default:
                 $this->logger->warning(
                     'Received invalid command on command queue. Command received: ' . $commandData['command']
@@ -154,6 +158,28 @@ class Angela
 
         // stop main loop
         $this->loop->stop();
+    }
+
+    /**
+     * Counts active processes in each pool.
+     *
+     * @return array
+     */
+    protected function getStatus() : array
+    {
+        $statusData = [];
+        foreach (array_keys($this->processes) as $poolName) {
+            if (!isset($statusData[$poolName])) {
+                $statusData[$poolName] = 0;
+            }
+            foreach ($this->processes[$poolName] as $process) {
+                /** @var Process $process */
+                if ($process->isRunning() !== false) {
+                    $statusData[$poolName]++;
+                }
+            }
+        }
+        return $statusData;
     }
 
     /**

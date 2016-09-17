@@ -31,6 +31,9 @@ class AngelaControl
         $this->broker = $brokerFactory->create();
     }
 
+    /**
+     * Starts Angela instance as a background process.
+     */
     public function start()
     {
         $pathToAngelaScript = $this->config['script_path'];
@@ -41,7 +44,12 @@ class AngelaControl
         exec(escapeshellcmd($phpPath . ' ' . $pathToAngelaScript) . ' > /dev/null 2>&1 &');
     }
 
-    public function stop()
+    /**
+     * Sends "shutdown" command to Angela instance.
+     *
+     * @return string
+     */
+    public function stop() : string
     {
         /** @var \Nekudo\Angela\Broker\Message $response */
         $response = $this->broker->sendCommand('shutdown');
@@ -56,8 +64,19 @@ class AngelaControl
 
     }
 
-    public function status()
+    /**
+     * Checks worker status of Angela instance.
+     *
+     * @return array
+     */
+    public function status() : array
     {
-
+        /** @var \Nekudo\Angela\Broker\Message $response */
+        $response = $this->broker->sendCommand('status');
+        if (empty($response)) {
+            return [];
+        }
+        $statusMessage = $response->getBody();
+        return json_decode($statusMessage, true);
     }
 }

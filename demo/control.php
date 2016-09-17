@@ -19,6 +19,17 @@ try {
             $response = $angelaControl->stop();
             echo $response . PHP_EOL;
             break;
+        case 'status':
+            $response = $angelaControl->status();
+            if (empty($response)) {
+                echo 'Unknown Status' . PHP_EOL;
+            } else {
+                echo 'Worker Status:' . PHP_EOL;
+                foreach ($response as $poolName => $wokerCount) {
+                    echo sprintf("Pool %s: %d active workers.", $poolName, $wokerCount) . PHP_EOL;
+                }
+            }
+            break;
         default:
             exit('Invalid action. Valid actions are: start|stop|restart|status' . PHP_EOL);
     }
