@@ -75,6 +75,13 @@ interface BrokerClient
     public function ack(Message $message);
 
     /**
+     * Rejects a received messages.
+     *
+     * @param Message $message
+     */
+    public function reject(Message $message);
+
+    /**
      * Main loop to wait for new jobs.
      */
     public function wait();
