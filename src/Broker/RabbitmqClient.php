@@ -159,6 +159,11 @@ class RabbitmqClient implements BrokerClient
         $this->channel->basic_ack($message->getMessageId());
     }
 
+    public function reject(Message $message)
+    {
+        $this->channel->basic_reject($message->getMessageId(), true);
+    }
+
     /**
      * @inheritdoc
      */
@@ -220,6 +225,7 @@ class RabbitmqClient implements BrokerClient
         // Check if job is known
         $callbackId = $message->getCallbackId();
         if (!isset($this->jobs[$callbackId])) {
+            $this->reject($message);
             return false;
         }
 
