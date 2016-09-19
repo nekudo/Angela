@@ -166,6 +166,9 @@ class RabbitmqClient implements BrokerClient
         $this->channel->basic_ack($message->getMessageId());
     }
 
+    /**
+     * @inheritdoc
+     */
     public function reject(Message $message)
     {
         $this->channel->basic_reject($message->getMessageId(), true);
