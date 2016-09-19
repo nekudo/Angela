@@ -2,8 +2,10 @@
 
 namespace Nekudo\Angela\Broker;
 
+use Nekudo\Angela\Exception\TimeoutException;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 
 class RabbitmqClient implements BrokerClient
@@ -17,6 +19,11 @@ class RabbitmqClient implements BrokerClient
      * @var AMQPChannel $channel
      */
     protected $channel;
+
+    /**
+     * @var int $timeout
+     */
+    protected $timeout = 0;
 
     /**
      * @var string $cmdQueueName
@@ -180,11 +187,14 @@ class RabbitmqClient implements BrokerClient
         );
         $this->jobs[$callbackId] = false;
         $this->channel->basic_publish($message, '', $jobName);
-        while ($this->hasResponse($callbackId) === false) {
-            $this->channel->wait();
+        try {
+            while ($this->hasResponse($callbackId) === false) {
+                $this->channel->wait(null, false, $this->timeout);
+            }
+            return $this->getResponse($callbackId);
+        } catch (AMQPTimeoutException $e) {
+            throw new TimeoutException('Job timed out.');
         }
-
-        return $this->getResponse($callbackId);
     }
 
     /**
@@ -210,7 +220,10 @@ class RabbitmqClient implements BrokerClient
      */
     public function respond(string $callbackId, string $reponse)
     {
-        $message = new AMQPMessage($reponse, ['correlation_id' => $callbackId]);
+        $message = new AMQPMessage($reponse, [
+            'correlation_id' => $callbackId,
+            'expiration' => 100
+        ]);
         $this->channel->basic_publish($message, '', $this->callbackQueueName);
     }
 
@@ -279,5 +292,14 @@ class RabbitmqClient implements BrokerClient
         }
         $angelaMessage->setBody($message->body);
         return $angelaMessage;
+    }
+
+
+    /**
+     * @inheritdoc
+     */
+    public function setTimeout(int $timeout)
+    {
+        $this->timeout = $timeout;
     }
 }

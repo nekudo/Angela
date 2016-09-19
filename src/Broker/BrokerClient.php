@@ -111,4 +111,11 @@ interface BrokerClient
      * @param string $response
      */
     public function respond(string $callbackId, string $response);
+
+    /**
+     * Sets timeout wich is applied when waiting for jobs to finish.
+     *
+     * @param int $timeout
+     */
+    public function setTimeout(int $timeout);
 }
