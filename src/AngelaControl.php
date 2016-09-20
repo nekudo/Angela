@@ -33,35 +33,72 @@ class AngelaControl
 
     /**
      * Starts Angela instance as a background process.
+     *
+     * @return int Process id (0 if script could not be started).
      */
-    public function start()
+    public function start() : int
     {
         $pathToAngelaScript = $this->config['script_path'];
         if (!file_exists($pathToAngelaScript)) {
             throw new \RuntimeException('Angela script not found. Check script_path in your config file.');
         }
+
+        // check if process is already running:
+        $angelaPid = $this->getAngelaPid();
+        if ($angelaPid !== 0) {
+            return $angelaPid;
+        }
+
+        // startup angela:
         $phpPath = $this->config['php_path'];
         exec(escapeshellcmd($phpPath . ' ' . $pathToAngelaScript) . ' > /dev/null 2>&1 &');
+
+        // return process id:
+        $pid = $this->getAngelaPid();
+        if (empty($pid)) {
+            throw new \RuntimeException('Could not start Angela. (Empty Pid)');
+        }
+        return $pid;
     }
 
     /**
      * Sends "shutdown" command to Angela instance.
      *
-     * @return string
+     * @return bool
      */
-    public function stop() : string
+    public function stop() : bool
     {
+        $angelaPid = $this->getAngelaPid();
+        if ($angelaPid === 0) {
+            return true;
+        }
         /** @var \Nekudo\Angela\Broker\Message $response */
         $response = $this->broker->sendCommand('shutdown');
         if (empty($response)) {
-            return '';
+            throw new \RuntimeException('Could not stop Angela. (Empty Response)');
         }
-        return $response->getBody();
+        if ($response->getBody() !== 'success') {
+            throw new \RuntimeException('Shutdown failed. (Incorrect response)');
+        }
+        return true;
     }
 
-    public function restart()
+    /**
+     * Restarts Angela processes.
+     *
+     * @return int Pid of new Angela process.
+     */
+    public function restart() : int
     {
-
+        $pid = $this->getAngelaPid();
+        if (empty($pid)) {
+            return $this->start();
+        }
+        $stopped = $this->stop();
+        if ($stopped !== true) {
+            throw new \RuntimeException('Error while stopping current Angela process.');
+        }
+        return $this->start();
     }
 
     /**
@@ -71,12 +108,43 @@ class AngelaControl
      */
     public function status() : array
     {
+        $angelaPid = $this->getAngelaPid();
+        if (empty($angelaPid)) {
+            throw new \RuntimeException('Angela not currently running.');
+        }
         /** @var \Nekudo\Angela\Broker\Message $response */
         $response = $this->broker->sendCommand('status');
         if (empty($response)) {
-            return [];
+            throw new \RuntimeException('Error fetching status. (Incorrect response)');
         }
         $statusMessage = $response->getBody();
         return json_decode($statusMessage, true);
+    }
+
+    /**
+     * Fetches Angela pid from process-list.
+     *
+     * @return int
+     */
+    protected function getAngelaPid() : int
+    {
+        $procInfo = [];
+        $cliOutput = [];
+        exec('ps x | grep ' . $this->config['script_path'], $cliOutput);
+        foreach ($cliOutput as $line) {
+            $line = trim($line);
+            if (empty($line)) {
+                continue;
+            }
+            if (strpos($line, 'grep') !== false) {
+                continue;
+            }
+            $procInfo = preg_split('#\s+#', $line);
+            break;
+        }
+        if (empty($procInfo)) {
+            return 0;
+        }
+        return (int)$procInfo[0];
     }
 }

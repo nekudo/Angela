@@ -128,8 +128,6 @@ class Angela
 
     /**
      * Startup worker processes and run main loop.
-     *
-     * @return bool
      */
     public function start()
     {

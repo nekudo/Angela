@@ -13,25 +13,26 @@ try {
     $action = $argv[1];
     switch ($action) {
         case 'start':
-            $angelaControl->start();
+            $pid = $angelaControl->start();
+            echo sprintf("Angela successfully started. (Pid: %d)", $pid) . PHP_EOL;
             break;
         case 'stop':
-            $response = $angelaControl->stop();
-            echo $response . PHP_EOL;
+            $angelaControl->stop();
+            echo "Angela successfully stoppped." .PHP_EOL;
+            break;
+        case 'restart':
+            $pid = $angelaControl->restart();
+            echo sprintf("Angela successfully restarted. (Pid: %d)", $pid) . PHP_EOL;
             break;
         case 'status':
             $response = $angelaControl->status();
-            if (empty($response)) {
-                echo 'Unknown Status' . PHP_EOL;
-            } else {
-                echo 'Worker Status:' . PHP_EOL;
-                foreach ($response as $poolName => $wokerCount) {
-                    echo sprintf("Pool %s: %d active workers.", $poolName, $wokerCount) . PHP_EOL;
-                }
+            echo 'Worker Status:' . PHP_EOL;
+            foreach ($response as $poolName => $wokerCount) {
+                echo sprintf("Pool %s: %d active workers.", $poolName, $wokerCount) . PHP_EOL;
             }
             break;
         default:
-            exit('Invalid action. Valid actions are: start|stop|restart|status' . PHP_EOL);
+            exit('Invalid action. Valid actions are: start|stop|restart|status|kill' . PHP_EOL);
     }
 } catch (Exception $e) {
     echo 'Error: ' . $e->getMessage() . PHP_EOL;
