@@ -8,7 +8,7 @@ $brokerClient = $brokerFactory->create();
 $brokerClient->setTimeout(10);
 
 try {
-    $responseA = $brokerClient->doJob('task_a', 'just a test');
+    $responseA = $brokerClient->doBackgroundJob('task_a', 'just a test');
     $responseB = $brokerClient->doJob('task_b', 'just a test');
     $brokerClient->close();
     var_dump($responseA, $responseB);

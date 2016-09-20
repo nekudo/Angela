@@ -1,12 +1,20 @@
 # Angela
 
-A simple framework to manage Gearman workers in a PHP application.
+Angela is a PHP microservice worker framework based on RabbitMQ.
 
 ## Features
 
-* Start/Stop/Restart worker processes.
-* Monitor/Keepalive worker processes.
-* Manage worker groups.
+#### Worker process management
+
+Angela starts/stops/restarts all your worker-processes.
+You can define multiple worker-pools which will be started as child processes of the main Angela process. If a process
+crashes a new one will be started.
+
+#### Job handling
+
+Each pool of workers is supposed to handle one kind of job or task. Using Angela you can pass jobs from your main
+application to your worker-processes (or microservices). These jobs can return a response or just run in
+the background.
 
 ## Installation
 
@@ -16,59 +24,24 @@ Using composer:
 
 ## Documentation
 
-Please see the "demo" folder for a complete example on how to use this framework.
+Please see "demo" folder for some sample code. These are the most important files:
 
-Here's the short version:
+* config.php
 
-**Step 1**
+  Holds all necessary configuration for Angela and your worker pools.
 
-Create your workers and put them in a "worker" directory.
-All workers have to extend the frameworks Worker class.
+* control.php
 
-```php
-<?php
-use Nekudo\Angela\Worker;
+  A simple control-script to start/stop/restart Angela.
+  Use `php control.php start` to fire up Angela.
+  
+* client.php
 
-class HelloAngela extends Worker
-{
-    protected function registerCallbacks()
-    {
-        $this->GearmanWorker->addFunction('sayHello', [$this, 'sayHello']);
-    }
+  An example application sending jobs to be handled by worker-processes.
+  
+* worker/*.php
 
-    public function sayHello(\GearmanJob $Job)
-    {
-        echo "Hello Angela!";
-    }
-}
-```
-
-**Step 2**
-
-Now you can use Angela to manage your worker processes:
-
-```php
-<?php
-$angela = new \Nekudo\Angela\Angela;
-$angela->setGearmanCredentials('127.0.0.1', 4730);
-$angela->setLogPath(__DIR__ . '/logs/');
-$angela->setRunPath(__DIR__ . '/run/');
-$angela->setWorkerPath(__DIR__ . '/worker/');
-
-// Configure your workers
-$angela->setWorkerConfig(
-    [
-        'hello' => [
-            'classname' => 'Nekudo\Angela\Demo\HelloAngela',
-            'filename' => 'HelloAngela.php',
-            'instances' => 1,
-        ],
-    ]
-);
-
-// Start worker processes as defined in your config:
-$angela->start();
-```
+  All your worker-scripts handling the actual jobs.
 
 
 ## License

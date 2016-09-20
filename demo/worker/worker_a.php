@@ -15,6 +15,9 @@ class WorkerA extends \Nekudo\Angela\Worker\Worker
         $callbackId = $message->getCallbackId();
         $type = $message->getType();
         $this->broker->ack($message);
+
+        sleep(5);
+
         if ($type === 'normal') {
             $this->broker->respond($callbackId, 'task A response');
         }
