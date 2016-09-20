@@ -26,23 +26,10 @@ Using composer:
 
 Please see "demo" folder for some sample code. These are the most important files:
 
-* config.php
-
-  Holds all necessary configuration for Angela and your worker pools.
-
-* control.php
-
-  A simple control-script to start/stop/restart Angela.
-  Use `php control.php start` to fire up Angela.
-  
-* client.php
-
-  An example application sending jobs to be handled by worker-processes.
-  
-* worker/*.php
-
-  All your worker-scripts handling the actual jobs.
-
+* __config.php:__ Holds all necessary configuration for Angela and your worker pools.
+* __control.php:__ A simple control-script to start/stop/restart Angela. Use `php control.php start` to fire up Angela.
+* __client.php:__ An example application sending jobs to be handled by worker-processes.
+* __worker/*.php:__ All your worker-scripts handling the actual jobs.
 
 ## License
 
