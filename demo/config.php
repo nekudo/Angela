@@ -9,6 +9,7 @@ return [
         'php_path' => 'php',
 
         'logger' => [
+            // path to store logfiles:
             'path' => __DIR__ . '/logs/',
 
             // possible levels are: emergency, alert, critical, error, warning, notice, info, debug
@@ -16,13 +17,16 @@ return [
         ],
 
         'broker' => [
+            // message-broker to use (currently only rabbitmq is supported)
             'type' => 'rabbitmq',
 
+            // name of system queues:
             'queues' => [
                 'cmd' => 'angela_cmd_1',
                 'callback' => 'angela_cb_1',
             ],
 
+            // broker credentials:
             'credentials' => [
                 'host' => 'localhost',
                 'port' => 5672,
@@ -44,6 +48,7 @@ return [
                 'cp_start' => 2,
             ],
 
+            // another pool of workers:
             'pool_b' => [
                 'worker_file' => __DIR__ . '/worker/worker_b.php',
                 'cp_start' => 2,
