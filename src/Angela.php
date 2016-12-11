@@ -32,6 +32,9 @@ class Angela
      */
     protected $loop;
 
+    /**
+     * @var Server $socket
+     */
     protected $socket;
 
 
@@ -52,6 +55,9 @@ class Angela
         $this->loop->addPeriodicTimer(5, [$this, 'checkWorkerStatus']);
     }
 
+    /**
+     * Opens a socket to listen for control commands.
+     */
     protected function startSocketServer()
     {
         $this->socket = new Server($this->loop);
@@ -61,7 +67,6 @@ class Angela
                 $this->onCommand($data, $connection);
             });
         });
-
         $this->socket->listen($this->config['socket']['port'], $this->config['socket']['host']);
     }
 

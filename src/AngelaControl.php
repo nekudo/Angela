@@ -143,13 +143,19 @@ class AngelaControl
         return (int)$procInfo[0];
     }
 
+    /**
+     * Sends a control command to Angela main process using socket connection.
+     *
+     * @param string $command
+     * @return string
+     */
     protected function sendCommand(string $command) : string
     {
         $response = '';
         $socketAddress = 'tcp://' . $this->config['socket']['host'] . ':' . $this->config['socket']['port'];
         $stream = stream_socket_client($socketAddress, $errno, $errstr, 3);
         if ($stream === false) {
-            throw new \RuntimeException('Could not connect to Angela main process.');
+            throw new \RuntimeException('Could not connect to Angela control socket.');
         }
         fwrite($stream, $command);
         while (!feof($stream)) {

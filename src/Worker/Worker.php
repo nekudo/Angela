@@ -71,7 +71,6 @@ abstract class Worker
                 break;
             default:
                 return false;
-                break;
         }
         return true;
     }

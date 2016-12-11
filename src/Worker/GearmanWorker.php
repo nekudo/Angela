@@ -9,8 +9,14 @@ class GearmanWorker extends Worker
      */
     protected $broker;
 
+    /**
+     * @var array $callbacks
+     */
     protected $callbacks = [];
 
+    /**
+     * @inheritdoc
+     */
     public function connectToBroker()
     {
         $this->broker = new \GearmanWorker;
@@ -20,12 +26,18 @@ class GearmanWorker extends Worker
         );
     }
 
+    /**
+     * @inheritdoc
+     */
     public function registerCallback(string $taskName, callable $callback): bool
     {
         $this->callbacks[$taskName] = $callback;
         return true;
     }
 
+    /**
+     * @inheritdoc
+     */
     public function wait()
     {
         foreach ($this->callbacks as $taskName => $callback) {
