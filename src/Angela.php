@@ -50,8 +50,6 @@ class Angela
 
         // periodically check workers:
         $this->loop->addPeriodicTimer(5, [$this, 'checkWorkerStatus']);
-
-        echo "started...";
     }
 
     protected function startSocketServer()
