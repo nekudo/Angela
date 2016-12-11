@@ -33,6 +33,9 @@ class BrokerFactory
                 $broker->setCommandQueue($this->brokerConfig['queues']['cmd']);
                 $broker->setCallbackQueue($this->brokerConfig['queues']['callback']);
                 break;
+            case 'gearman':
+                $broker = new GearmanClient;
+                break;
         }
         return $broker;
     }
@@ -47,6 +50,7 @@ class BrokerFactory
     {
         $validBrokerTypes = [
             'rabbitmq',
+            'gearman',
         ];
         return in_array($brokerType, $validBrokerTypes);
     }

@@ -16,19 +16,19 @@ return [
         ],
 
         'broker' => [
-            'type' => 'rabbitmq',
-
-            'queues' => [
-                'cmd' => 'angela_cmd_1',
-                'callback' => 'angela_cb_1',
-            ],
+            'type' => 'gearman',
 
             'credentials' => [
                 'host' => 'localhost',
-                'port' => 5672,
-                'username' => 'guest',
-                'password' => 'guest',
+                'port' => 4739,
+                'username' => '',
+                'password' => '',
             ],
+        ],
+
+        'socket' => [
+            'host' => '127.0.0.1',
+            'port' => '1338',
         ],
 
         // Process pool configuration. Add as many pools as you like.

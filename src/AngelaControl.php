@@ -72,13 +72,9 @@ class AngelaControl
         if ($angelaPid === 0) {
             return true;
         }
-        /** @var \Nekudo\Angela\Broker\Message $response */
-        $response = $this->broker->sendCommand('shutdown');
-        if (empty($response)) {
-            throw new \RuntimeException('Could not stop Angela. (Empty Response)');
-        }
-        if ($response->getBody() !== 'success') {
-            throw new \RuntimeException('Shutdown failed. (Incorrect response)');
+        $response = $this->sendCommand('shutdown');
+        if ($response === 'failed') {
+            throw new \RuntimeException('Shutdown failed.');
         }
         return true;
     }
@@ -110,15 +106,14 @@ class AngelaControl
     {
         $angelaPid = $this->getAngelaPid();
         if (empty($angelaPid)) {
-            throw new \RuntimeException('Angela not currently running.');
+            //throw new \RuntimeException('Angela not currently running.');
         }
         /** @var \Nekudo\Angela\Broker\Message $response */
-        $response = $this->broker->sendCommand('status');
+        $response = $this->sendCommand('status');
         if (empty($response)) {
             throw new \RuntimeException('Error fetching status. (Incorrect response)');
         }
-        $statusMessage = $response->getBody();
-        return json_decode($statusMessage, true);
+        return json_decode($response, true);
     }
 
     /**
@@ -146,5 +141,21 @@ class AngelaControl
             return 0;
         }
         return (int)$procInfo[0];
+    }
+
+    protected function sendCommand(string $command) : string
+    {
+        $response = '';
+        $socketAddress = 'tcp://' . $this->config['socket']['host'] . ':' . $this->config['socket']['port'];
+        $stream = stream_socket_client($socketAddress, $errno, $errstr, 3);
+        if ($stream === false) {
+            throw new \RuntimeException('Could not connect to Angela main process.');
+        }
+        fwrite($stream, $command);
+        while (!feof($stream)) {
+            $response .= fgets($stream, 1024);
+        }
+        fclose($stream);
+        return $response;
     }
 }

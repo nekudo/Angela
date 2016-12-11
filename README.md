@@ -1,6 +1,8 @@
 # Angela
 
-Angela is a PHP microservice worker framework based on RabbitMQ.
+Angela is a PHP microservice worker framework.
+
+*Attention:* v2 branch is not stable yet!
 
 ## Features
 

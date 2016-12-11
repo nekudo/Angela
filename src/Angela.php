@@ -1,11 +1,9 @@
 <?php namespace Nekudo\Angela;
 
-use Katzgrau\KLogger\Logger;
-use Nekudo\Angela\Broker\BrokerClient;
-use Nekudo\Angela\Broker\BrokerFactory;
-use Nekudo\Angela\Logger\LoggerFactory;
 use React\ChildProcess\Process;
 use React\EventLoop\Factory as LoopFactory;
+use React\Socket\Connection;
+use React\Socket\Server;
 
 /**
  * A microservice/worker framework.
@@ -34,15 +32,7 @@ class Angela
      */
     protected $loop;
 
-    /**
-     * @var BrokerClient $broker;
-     */
-    protected $broker;
-
-    /**
-     * @var Logger $logger
-     */
-    protected $logger;
+    protected $socket;
 
 
     public function __construct(array $config)
@@ -52,33 +42,52 @@ class Angela
         }
         $this->config = $config['angela'];
 
-        $loggerFactory = new LoggerFactory($this->config['logger']);
-        $this->logger = $loggerFactory->create();
-        unset($loggerFactory);
-        $this->logger->debug('Logger initialized');
-
         // create main event loop:
         $this->loop = LoopFactory::create();
 
-        // connect to message broker:
-        $this->connectToBroker();
-
-        // listen for angela control commands:
-        $this->loop->addPeriodicTimer(0.5, [$this, 'onCommand']);
+        // start/open socket
+        $this->startSocketServer();
 
         // periodically check workers:
         $this->loop->addPeriodicTimer(5, [$this, 'checkWorkerStatus']);
+
+        echo "started...";
+    }
+
+    protected function startSocketServer()
+    {
+        $this->socket = new Server($this->loop);
+        $this->socket->on('connection', function ($connection) {
+            /** @var \React\Socket\Connection $connection */
+            $connection->on('data', function ($data) use ($connection) {
+                $this->onCommand($data, $connection);
+            });
+        });
+
+        $this->socket->listen($this->config['socket']['port'], $this->config['socket']['host']);
     }
 
     /**
-     * Connects to message broker to be able to receive external commands.
+     * Checks message broker for new command and calls action if command is received.
+     *
+     * @param string $data
+     * @param Connection $connection
+     * @return bool
      */
-    public function connectToBroker()
+    public function onCommand($data, Connection $connection) : bool
     {
-        $this->logger->debug('Connecting to message broker');
-        $brokerFactory = new BrokerFactory($this->config['broker']);
-        $this->broker = $brokerFactory->create();
-        unset($brokerFactory);
+        switch ($data) {
+            case 'shutdown':
+                $connection->end('success');
+                $this->stop();
+                return true;
+            case 'status':
+                $statusData = $this->getStatus();
+                $connection->end(json_encode($statusData));
+                return true;
+            default:
+                return false;
+        }
     }
 
     /**
@@ -91,37 +100,6 @@ class Angela
     {
         if (empty($output)) {
             return true;
-        }
-        $this->logger->debug('Child process output: ' . $output);
-        return true;
-    }
-
-    /**
-     * Checks message broker for new command and calls action if command is received.
-     *
-     * @return bool
-     */
-    public function onCommand() : bool
-    {
-        $commandData = $this->broker->getCommand();
-        if (empty($commandData)) {
-            return true;
-        }
-        $this->logger->debug('Received command from broker: ' . $commandData['command']);
-        switch ($commandData['command']) {
-            case 'shutdown':
-                $this->stop();
-                $this->broker->respond($commandData['callbackId'], 'success');
-                break;
-            case 'status':
-                $statusData = $this->getStatus();
-                $this->broker->respond($commandData['callbackId'], json_encode($statusData));
-                break;
-            default:
-                $this->logger->warning(
-                    'Received invalid command on command queue. Command received: ' . $commandData['command']
-                );
-                break;
         }
         return true;
     }
@@ -216,7 +194,6 @@ class Angela
      */
     protected function startPool(string $poolName, array $poolConfig)
     {
-        $this->logger->debug('Starting pool ' . $poolName);
         if (!isset($poolConfig['worker_file'])) {
             throw new \RuntimeException('Path to worker file not set in pool config.');
         }
@@ -229,7 +206,7 @@ class Angela
                 $process = $this->startProcess($poolConfig['worker_file']);
                 array_push($this->processes[$poolName], $process);
             } catch (\Exception $e) {
-                $this->logger->critical('Could not start worker process. Exception: ' . $e->getMessage());
+                // @todo throw exception?
             }
         }
     }

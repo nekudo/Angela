@@ -14,7 +14,8 @@
         "php": ">=7.0.0",
         "react/child-process": "^0.4.0",
         "php-amqplib/php-amqplib": "2.6.*",
-        "katzgrau/klogger": "dev-master"
+        "katzgrau/klogger": "dev-master",
+        "react/socket": "v0.4.3"
     },
     "autoload": {
         "psr-4": {

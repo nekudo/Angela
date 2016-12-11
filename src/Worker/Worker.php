@@ -2,9 +2,6 @@
 
 namespace Nekudo\Angela\Worker;
 
-use Katzgrau\KLogger\Logger;
-use Nekudo\Angela\Broker\BrokerFactory;
-use Nekudo\Angela\Logger\LoggerFactory;
 use React\EventLoop\Factory;
 use React\Stream\Stream;
 
@@ -16,11 +13,6 @@ abstract class Worker
     protected $config = [];
 
     /**
-     * @var $logger Logger
-     */
-    protected $logger;
-
-    /**
      * @var \React\EventLoop\ExtEventLoop|\React\EventLoop\LibEventLoop
      * |\React\EventLoop\LibEvLoop|\React\EventLoop\StreamSelectLoop $loop
      */
@@ -30,18 +22,6 @@ abstract class Worker
      * @var Stream $readStream
      */
     protected $readStream;
-
-    /**
-     * @var \Nekudo\Angela\Broker\BrokerClient $broker
-     */
-    protected $broker;
-
-    /**
-     * Holds all tasks an corresponding callbacks a worker can handle.
-     *
-     * @var array $tasks
-     */
-    protected $tasks = [];
 
     public function __construct()
     {
@@ -58,17 +38,16 @@ abstract class Worker
     }
 
     /**
-     * Registers a task. The worker will listen on a queue with corresponding name for new jobs.
-     * If a job is received the callback will be executed.
+     * Initialize worker by setting config and connecting to message broker.
      *
-     * @param string $taskName
-     * @param callable $callback
-     * @return bool
+     * @param array $config
      */
-    public function registerTask(string $taskName, callable $callback) : bool
+    public function init(array $config)
     {
-        $this->tasks[$taskName] = $callback;
-        return true;
+        $this->setConfig($config);
+        $this->connectToBroker();
+        $this->closeInputStream();
+        $this->wait();
     }
 
     /**
@@ -98,35 +77,8 @@ abstract class Worker
     }
 
     /**
-     * Initialize worker by setting config and connecting to message broker.
-     *
-     * @param array $config
+     * Closes the input/read stream.
      */
-    public function init(array $config)
-    {
-        $this->setConfig($config);
-        $this->createLogger();
-        $this->connectToBroker();
-        $this->closeInputStream();
-        $this->logger->debug('Worker initialization done. Waiting for jobs...');
-        $this->consume();
-    }
-
-    /**
-     * Waits for new jobs.
-     */
-    public function consume()
-    {
-        if (empty($this->tasks)) {
-            throw new \RuntimeException('Consume method called but no tasks registered.');
-        }
-        foreach ($this->tasks as $queueName => $callback) {
-            $this->broker->initQueue($queueName);
-            $this->broker->consumeQueue($queueName, $callback);
-        }
-        $this->broker->wait();
-    }
-
     protected function closeInputStream()
     {
         $this->readStream->close();
@@ -146,32 +98,30 @@ abstract class Worker
     }
 
     /**
-     * Creates new instance of logger object.
-     */
-    protected function createLogger()
-    {
-        $loggerFactory = new LoggerFactory($this->config['logger']);
-        $this->logger = $loggerFactory->create();
-        unset($loggerFactory);
-    }
-
-    /**
-     * Connects to message broker.
-     */
-    protected function connectToBroker()
-    {
-        $brokerFactory = new BrokerFactory($this->config['broker']);
-        $this->broker = $brokerFactory->create();
-        foreach (array_keys($this->tasks) as $queueName) {
-            $this->broker->initQueue($queueName);
-        }
-    }
-
-    /**
      * Runs main loop waiting for new jobs or commands.
      */
     public function run()
     {
         $this->loop->run();
     }
+
+    /**
+     * Connects to message broker.
+     */
+    abstract protected function connectToBroker();
+
+    /**
+     * Registers a callback/job the worker is capable to do.
+     * If a job is received the callback will be executed.
+     *
+     * @param string $taskName
+     * @param callable $callback
+     * @return bool
+     */
+    abstract public function registerCallback(string $taskName, callable $callback) : bool;
+
+    /**
+     * Waits for new jobs.
+     */
+    abstract public function wait();
 }
