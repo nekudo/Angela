@@ -1,5 +1,7 @@
 <?php namespace Nekudo\Angela;
 
+use Nekudo\Angela\Logger\LoggerFactory;
+use Psr\Log\AbstractLogger;
 use React\ChildProcess\Process;
 use React\EventLoop\Factory as LoopFactory;
 use React\Socket\Connection;
@@ -37,6 +39,11 @@ class Angela
      */
     protected $socket;
 
+    /**
+     * @var AbstractLogger $logger
+     */
+    protected $logger;
+
 
     public function __construct(array $config)
     {
@@ -45,7 +52,10 @@ class Angela
         }
         $this->config = $config['angela'];
 
+        $this->initLogger();
+
         // create main event loop:
+        $this->logger->debug('Creating main event loop.');
         $this->loop = LoopFactory::create();
 
         // start/open socket
@@ -56,10 +66,37 @@ class Angela
     }
 
     /**
+     * Sets a logger.
+     *
+     * @param AbstractLogger $logger
+     */
+    public function setLogger(AbstractLogger $logger)
+    {
+        $this->logger = $logger;
+    }
+
+    /**
+     * Initializes logger as defined in configuration.
+     */
+    protected function initLogger()
+    {
+        $loggerFactory = new LoggerFactory($this->config['logger']);
+        $logger = $loggerFactory->create();
+        $this->setLogger($logger);
+    }
+
+    /**
      * Opens a socket to listen for control commands.
      */
     protected function startSocketServer()
     {
+        $this->logger->debug(
+            sprintf(
+                'Starting socket server. (Host: %s, Port: %d)',
+                $this->config['socket']['port'],
+                $this->config['socket']['host']
+            )
+        );
         $this->socket = new Server($this->loop);
         $this->socket->on('connection', function ($connection) {
             /** @var \React\Socket\Connection $connection */
@@ -79,6 +116,7 @@ class Angela
      */
     public function onCommand($data, Connection $connection) : bool
     {
+        $this->logger->debug(sprintf('Received data via socket connection. Data: %s', $data));
         switch ($data) {
             case 'shutdown':
                 $connection->end('success');
@@ -89,6 +127,7 @@ class Angela
                 $connection->end(json_encode($statusData));
                 return true;
             default:
+                $this->logger->debug('Received unknown command on via socket connection.');
                 return false;
         }
     }
@@ -102,9 +141,10 @@ class Angela
     protected function onProcessOut(string $output) : bool
     {
         if (empty($output)) {
+            $this->logger->debug('Received empty message from child process.');
             return true;
         }
-        // @todo Log this outputs...
+        $this->logger->info(sprintf('Received output from child process: %s'. $output));
         return true;
     }
 
@@ -114,6 +154,7 @@ class Angela
     public function start()
     {
         if (empty($this->config['pool'])) {
+            $this->logger->error('No worker pool defined. Check "pool" section in configuration.');
             throw new \RuntimeException('No worker pool defined in configuration.');
         }
 
@@ -123,6 +164,7 @@ class Angela
         }
 
         // run
+        $this->logger->debug('Starting main event loop.');
         $this->loop->run();
     }
 
@@ -137,6 +179,7 @@ class Angela
         }
 
         // stop main loop
+        $this->logger->debug('Stopping main event loop.');
         $this->loop->stop();
     }
 
@@ -147,6 +190,7 @@ class Angela
      */
     protected function getStatus() : array
     {
+        $this->logger->debug('Collecting status data of child processes.');
         $statusData = [];
         foreach (array_keys($this->processes) as $poolName) {
             if (!isset($statusData[$poolName])) {
@@ -167,6 +211,7 @@ class Angela
      */
     public function checkWorkerStatus()
     {
+        $this->logger->debug('Checking worker status.');
         foreach ($this->config['pool'] as $poolName => $poolConfig) {
             $this->checkPoolStatus($poolName);
         }
@@ -183,6 +228,7 @@ class Angela
         foreach ($this->processes[$poolName] as $i => $process) {
             /** @var Process $process */
             if ($process->isRunning() === false) {
+                $this->logger->info(sprintf('Found process not running. Stating new process. (Pool: %s)', $poolName));
                 unset($process, $this->processes[$poolName][$i]);
                 $process = $this->startProcess($poolConfig['worker_file']);
                 $this->processes[$poolName][$i] = $process;
@@ -198,7 +244,9 @@ class Angela
      */
     protected function startPool(string $poolName, array $poolConfig)
     {
+        $this->logger->debug(sprintf('Starting processes of pool %s.', $poolName));
         if (!isset($poolConfig['worker_file'])) {
+            $this->logger->error('Worker file not defined in pool configuration.');
             throw new \RuntimeException('Path to worker file not set in pool config.');
         }
 
@@ -210,7 +258,7 @@ class Angela
                 $process = $this->startProcess($poolConfig['worker_file']);
                 array_push($this->processes[$poolName], $process);
             } catch (\Exception $e) {
-                // @todo throw exception?
+                $this->logger->warning(sprintf('Could not start child process. (Error: s)', $e->getMessage()));
             }
         }
     }
@@ -223,6 +271,7 @@ class Angela
      */
     protected function stopPool(string $poolName) : bool
     {
+        $this->logger->debug(sprintf('Stopping processes of pool %s', $poolName));
         if (empty($this->processes[$poolName])) {
             return true;
         }
@@ -244,7 +293,9 @@ class Angela
      */
     protected function startProcess(string $pathToFile) : Process
     {
-        $process = new Process('exec php ' . $pathToFile);
+        $startupCommand = 'exec php ' . $pathToFile;
+        $this->logger->debug(sprintf('Stating child process using command: %s', $startupCommand));
+        $process = new Process($startupCommand);
         $process->start($this->loop);
 
         // listen to output from child process:
