@@ -71,7 +71,7 @@ class Angela
     }
 
     /**
-     * Checks message broker for new command and calls action if command is received.
+     * Executes control-commands.
      *
      * @param string $data
      * @param Connection $connection
@@ -104,6 +104,7 @@ class Angela
         if (empty($output)) {
             return true;
         }
+        // @todo Log this outputs...
         return true;
     }
 

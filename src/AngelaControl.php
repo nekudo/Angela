@@ -1,19 +1,11 @@
 <?php namespace Nekudo\Angela;
 
-use Nekudo\Angela\Broker\BrokerClient;
-use Nekudo\Angela\Broker\BrokerFactory;
-
 class AngelaControl
 {
     /**
      * @var array $config
      */
     protected $config;
-
-    /**
-     * @var BrokerClient $broker ;
-     */
-    protected $broker;
 
     public function __construct(array $config)
     {
@@ -27,8 +19,6 @@ class AngelaControl
             throw new \RuntimeException('php_path not defined in configuration.');
         }
         $this->config = $config['angela'];
-        $brokerFactory = new BrokerFactory($this->config['broker']);
-        $this->broker = $brokerFactory->create();
     }
 
     /**
@@ -106,9 +96,8 @@ class AngelaControl
     {
         $angelaPid = $this->getAngelaPid();
         if (empty($angelaPid)) {
-            //throw new \RuntimeException('Angela not currently running.');
+            throw new \RuntimeException('Angela not currently running.');
         }
-        /** @var \Nekudo\Angela\Broker\Message $response */
         $response = $this->sendCommand('status');
         if (empty($response)) {
             throw new \RuntimeException('Error fetching status. (Incorrect response)');
