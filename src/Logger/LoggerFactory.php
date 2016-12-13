@@ -3,6 +3,7 @@
 namespace Nekudo\Angela\Logger;
 
 use Katzgrau\KLogger\Logger;
+use Psr\Log\AbstractLogger;
 
 class LoggerFactory
 {
@@ -16,9 +17,9 @@ class LoggerFactory
     /**
      * Creates logger depending on configuration.
      *
-     * @return Logger
+     * @return AbstractLogger
      */
-    public function create() : Logger
+    public function create() : AbstractLogger
     {
         if (!isset($this->loggerConfig['path'])) {
             throw new \RuntimeException('Path for logfiles not set in configuration.');
