@@ -2,8 +2,9 @@
 
 use Nekudo\Angela\Logger\LoggerFactory;
 use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 use React\ChildProcess\Process;
-use React\EventLoop\Factory as LoopFactory;
+use Overnil\EventLoop\Factory as EventLoopFactory;
 use React\Socket\Connection;
 use React\Socket\Server;
 
@@ -56,7 +57,7 @@ class Angela
 
         // create main event loop:
         $this->logger->debug('Creating main event loop.');
-        $this->loop = LoopFactory::create();
+        $this->loop = EventLoopFactory::create();
 
         // start/open socket
         $this->startSocketServer();
@@ -70,7 +71,7 @@ class Angela
      *
      * @param AbstractLogger $logger
      */
-    public function setLogger(AbstractLogger $logger)
+    public function setLogger(LoggerInterface $logger)
     {
         $this->logger = $logger;
     }

@@ -13,9 +13,10 @@
     "require": {
         "php": ">=7.0.0",
         "react/child-process": "^0.4.0",
-        "php-amqplib/php-amqplib": "2.6.*",
         "katzgrau/klogger": "dev-master",
-        "react/socket": "v0.4.3"
+        "react/socket": "v0.4.3",
+        "overnil/event-loop": "v0.0.3",
+        "react/zmq": "v0.3.0"
     },
     "autoload": {
         "psr-4": {

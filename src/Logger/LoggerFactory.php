@@ -3,52 +3,33 @@
 namespace Nekudo\Angela\Logger;
 
 use Katzgrau\KLogger\Logger;
-use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 class LoggerFactory
 {
-    protected $loggerConfig = [];
+    protected $config = [];
 
     public function __construct(array $loggerConfig)
     {
-        $this->loggerConfig = $loggerConfig;
+        $this->config = $loggerConfig;
     }
 
     /**
      * Creates logger depending on configuration.
      *
-     * @return AbstractLogger
+     * @return LoggerInterface
      */
-    public function create() : AbstractLogger
+    public function create() : LoggerInterface
     {
-        if (!isset($this->loggerConfig['path'])) {
-            throw new \RuntimeException('Path for logfiles not set in configuration.');
+        $loggerType = $this->config['type'] ?? 'null';
+        switch ($loggerType) {
+            case 'file':
+                return new Logger($this->config['path'], $this->config['level']);
+            case 'null':
+                return new NullLogger;
+            default:
+                throw new \RuntimeException('Invalid logger type');
         }
-        $this->loggerConfig['level'] = $this->loggerConfig['level'] ?? 'warning';
-        if (!$this->isValidLogLevel($this->loggerConfig['level'])) {
-            $this->loggerConfig['level'] = 'warning';
-        }
-        return new Logger($this->loggerConfig['path'], $this->loggerConfig['level']);
-    }
-
-    /**
-     * Checks if given string is a valid PSR-3 log level.
-     *
-     * @param string $logLevel
-     * @return bool
-     */
-    protected function isValidLogLevel(string $logLevel) : bool
-    {
-        $psrLevels = [
-            'emergency',
-            'alert',
-            'critical',
-            'error',
-            'warning',
-            'notice',
-            'info',
-            'debug'
-        ];
-        return in_array($logLevel, $psrLevels);
     }
 }

@@ -36,10 +36,20 @@ var_dump($response);
 
 */
 
-
+/*
 $fp = stream_socket_client('tcp://127.0.0.1:1338');
 fwrite($fp, "shutdown");
 while (!feof($fp)) {
     echo fgets($fp, 1024);
 }
 fclose($fp);
+*/
+
+
+$context = new ZMQContext;
+$socket = $context->getSocket(ZMQ::SOCKET_PUSH);
+$socket->connect('tcp://127.0.0.1:5555');
+$socket->send('just a test');
+if (method_exists($socket, 'disconnect')) {
+    $socket->disconnect('tcp://127.0.0.1:5555');
+}
