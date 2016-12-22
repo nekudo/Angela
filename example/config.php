@@ -17,20 +17,9 @@ return [
         'level' => 'debug',
     ],
 
-    'broker' => [
-        'type' => 'gearman',
-
-        'credentials' => [
-            'host' => 'localhost',
-            'port' => 4739,
-            'username' => '',
-            'password' => '',
-        ],
-    ],
-
-    'socket' => [
-        'host' => '127.0.0.1',
-        'port' => '1338',
+    'sockets' => [
+        // Command/Control socket for server:
+        'server_cc' => 'tcp://127.0.0.1:5551',
     ],
 
     // Process pool configuration. Add as many pools as you like.
