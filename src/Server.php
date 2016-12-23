@@ -31,6 +31,16 @@ class Server
      */
     protected $ccSocket;
 
+    /**
+     * @var \ZMQContext $workerContext
+     */
+    protected $workerContext;
+
+    /**
+     * @var \React\ZMQ\SocketWrapper $workerSocket
+     */
+    protected $workerSocket;
+
     public function __construct(array $config)
     {
         $this->config = $config;
@@ -44,6 +54,7 @@ class Server
         $this->loop = EventLoopFactory::create();
 
         $this->startCommandSocket();
+        $this->startWorkerSocket();
     }
 
     public function setLogger(LoggerInterface $logger)
@@ -63,24 +74,50 @@ class Server
 
     protected function startCommandSocket()
     {
-        $this->loop = EventLoopFactory::create();
         $this->ccContext = new Context($this->loop);
         $this->ccSocket = $this->ccContext->getSocket(\ZMQ::SOCKET_REP);
         $this->ccSocket->bind($this->config['sockets']['server_cc']);
-        $this->ccSocket->on('message', [$this, 'onCommand']);
+        $this->ccSocket->on('message', [$this, 'onCCMessage']);
     }
 
-    public function onCommand(string $message)
+    protected function startWorkerSocket()
     {
-        switch ($message) {
-            case 'stop':
-                $response = 'ok';
-                $this->stop();
+        $this->workerContext = new Context($this->loop);
+        $this->workerSocket = $this->workerContext->getSocket(\ZMQ::SOCKET_PUSH);
+        $this->workerSocket->bind($this->config['sockets']['worker']);
+    }
+
+    public function onCCMessage(string $message)
+    {
+        $data = json_decode($message, true);
+        switch ($data['action']) {
+            case 'command':
+                $response = $this->handleCommand($data['command']['name']);
+                break;
+            case 'job':
+                $response = $this->handleJob($data['job']['name'], $data['job']['workload']);
                 break;
             default:
-                $response = 'error';
+                $response = 'Invalid action.';
                 break;
+
         }
+
         $this->ccSocket->send($response);
+    }
+
+    protected function handleCommand(string $command) : string
+    {
+        switch ($command) {
+            case 'stop':
+                $this->loop->stop();
+                return 'ok';
+        }
+        return 'error';
+    }
+
+    protected function handleJob(string $jobName, string $payload = '') : string
+    {
+        return 'Server: Received job request. ' . $jobName;
     }
 }

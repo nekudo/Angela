@@ -14,6 +14,9 @@ class WorkerC
     /** @var Context $context  */
     protected $context = null;
 
+    /**
+     * @var \React\ZMQ\SocketWrapper $socket
+     */
     protected $socket = null;
 
     public function __construct()
@@ -21,7 +24,7 @@ class WorkerC
         $this->loop = EventLoopFactory::create();
         $this->context = new Context($this->loop);
         $this->socket = $this->context->getSocket(\ZMQ::SOCKET_PULL);
-        $this->socket->bind("tcp://127.0.0.1:5555");
+        $this->socket->connect("tcp://127.0.0.1:5552");
         $this->socket->on('message', [$this, 'onMessage']);
     }
 

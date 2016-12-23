@@ -20,6 +20,8 @@ return [
     'sockets' => [
         // Command/Control socket for server:
         'server_cc' => 'tcp://127.0.0.1:5551',
+
+        'worker' => 'tcp://127.0.0.1:5552',
     ],
 
     // Process pool configuration. Add as many pools as you like.
