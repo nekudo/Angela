@@ -19,7 +19,7 @@ return [
 
     'sockets' => [
         // Command/Control socket for server:
-        'server_cc' => 'tcp://127.0.0.1:5551',
+        'client' => 'tcp://127.0.0.1:5551',
 
         'worker' => 'tcp://127.0.0.1:5552',
     ],
@@ -28,7 +28,7 @@ return [
     'pool' => [
 
         // Unique name/identifier for each pool:
-        'pool_a' => [
+        'pool_c' => [
 
             // Path to the worker file:
             'worker_file' => __DIR__ . '/worker/worker_a.php',
@@ -37,9 +37,11 @@ return [
             'cp_start' => 2,
         ],
 
+        /*
         'pool_b' => [
             'worker_file' => __DIR__ . '/worker/worker_b.php',
             'cp_start' => 2,
         ],
+        */
     ],
 ];

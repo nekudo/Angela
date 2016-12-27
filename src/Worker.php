@@ -1,101 +1,113 @@
-<?php namespace Nekudo\Angela;
+<?php
+declare(strict_types=1);
+namespace Nekudo\Angela;
+
+use Overnil\EventLoop\Factory as EventLoopFactory;
+use React\Stream\Stream;
+use React\ZMQ\Context;
 
 abstract class Worker
 {
-    /** @var string Unique name to identify worker. */
-    protected $workerName;
-
-    /** @var \GearmanWorker */
-    protected $GearmanWorker;
-
-    /** @var int Jobs handled by worker since start. */
-    protected $jobsTotal = 0;
-
-    /** @var int Worker startup time. */
-    protected $startupTime = 0;
-
-    protected $runPath;
-
-    abstract protected function registerCallbacks();
-
-    public function __construct($workerName, $gearmanHost, $gearmanPort, $runPath)
-    {
-        $this->workerName = $workerName;
-        $this->runPath = $runPath;
-        $this->startupTime = time();
-
-        $this->GearmanWorker = new \GearmanWorker;
-        $this->GearmanWorker->addServer($gearmanHost, $gearmanPort);
-
-        // Register methods every worker has:
-        $this->GearmanWorker->addFunction('ping_' . $this->workerName, array($this, 'ping'));
-        $this->GearmanWorker->addFunction('jobinfo_' . $this->workerName, array($this, 'getJobInfo'));
-        $this->GearmanWorker->addFunction('pidupdate_' . $this->workerName, array($this, 'updatePidFile'));
-
-        $this->registerCallbacks();
-
-        // Let's roll...
-        $this->startup();
-    }
-
     /**
-     * Startup worker and wait for jobs.
+     * @var array $config
      */
-    protected function startup()
+    protected $config = [];
+
+    /**
+     * @var \React\EventLoop\LoopInterface $loop
+     */
+    protected $loop;
+
+    /**
+     * @var Stream $readStream
+     */
+    protected $readStream;
+
+    /**
+     * @var Context $context
+     */
+    protected $context = null;
+
+    /**
+     * @var \React\ZMQ\SocketWrapper $socket
+     */
+    protected $socket = null;
+
+    /**
+     * @var array
+     */
+    protected $callbacks = [];
+
+    public function __construct()
     {
-        $this->updatePidFile();
-        while ($this->GearmanWorker->work());
+        // create workers main event loop:
+        $this->loop = EventLoopFactory::create();
+
+        $this->openInputStream();
+        $this->startWorkerSocket();
+    }
+
+    public function registerJob(string $jobName, callable $callback)
+    {
+        $this->callbacks[$jobName] = $callback;
+        $this->socket->subscribe($jobName);
+    }
+
+    protected function openInputStream()
+    {
+        // creates input stream for worker:
+        $this->readStream = new Stream(STDIN, $this->loop);
+
+        // listen to commands on input stream:
+        $this->readStream->on('data', function ($data) {
+            $this->onCommand($data);
+        });
+    }
+
+    protected function startWorkerSocket()
+    {
+        $this->context = new Context($this->loop);
+        $this->socket = $this->context->getSocket(\ZMQ::SOCKET_SUB);
+        $this->socket->connect("tcp://127.0.0.1:5552");
+        $this->socket->on('messages', [$this, 'onJobMessage']);
     }
 
     /**
-     * Simple ping method to test if worker is alive.
+     * Handles commands the worker receives from the parent process.
      *
-     * @param \GearmanJob $Job
-     */
-    public function ping($Job)
-    {
-        $Job->sendData('pong');
-    }
-
-    /**
-     * Increases job counter.
-     */
-    public function countJob()
-    {
-        $this->jobsTotal++;
-    }
-
-    /**
-     * Returns information about jobs handled.
-     *
-     * @param \GearmanJob $Job
-     */
-    public function getJobInfo($Job)
-    {
-        $uptimeSeconds = time() - $this->startupTime;
-        $uptimeSeconds = ($uptimeSeconds === 0) ? 1 : $uptimeSeconds;
-        $avgJobsMin = $this->jobsTotal / ($uptimeSeconds / 60);
-        $avgJobsMin = round($avgJobsMin, 2);
-        $response = [
-            'jobs_total' => $this->jobsTotal,
-            'avg_jobs_min' => $avgJobsMin,
-            'uptime_seconds' => $uptimeSeconds,
-        ];
-        $Job->sendData(json_encode($response));
-    }
-
-    /**
-     * Updates PID file for the worker.
-     *
+     * @param string $input
      * @return bool
-     * @throws WebsocketException
      */
-    public function updatePidFile()
+    public function onCommand(string $input) : bool
     {
-        $pidPath = $this->runPath . $this->workerName . '.pid';
-        if (file_put_contents($pidPath, time()) === false) {
-            throw new WebsocketException('Could not create PID file.');
-        }
+        var_dump($input);
         return true;
     }
+
+    public function onJobMessage(array $message)
+    {
+        $jobName = $message[0];
+        $payload = $message[1];
+        if (!isset($this->callbacks[$jobName])) {
+            throw new \RuntimeException('No callback found for requested job.');
+        }
+        call_user_func($this->callbacks[$jobName], $payload);
+    }
+
+    /**
+     * Closes the input/read stream.
+     */
+    protected function closeInputStream()
+    {
+        $this->readStream->close();
+        unset($this->readStream);
+        $this->loop->stop();
+        unset($this->loop);
+    }
+
+    public function run()
+    {
+        $this->loop->run();
+    }
+
 }

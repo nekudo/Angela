@@ -14,5 +14,9 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 $client = new \Nekudo\Angela\Client;
 $client->addServer('tcp://127.0.0.1:5551');
-$result = $client->doNormal('test', 'just a test');
-var_dump($result);
+for ($i = 1; $i <= 10; $i++) {
+    $result = $client->doNormal('taskA', 'test ' . $i);
+    echo $i . ' ' . $result . PHP_EOL;
+}
+$client->close();
+echo 'done';

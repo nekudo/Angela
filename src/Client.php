@@ -41,7 +41,6 @@ class Client
                 ]
             ]));
             $result = $this->socket->recv();
-            $this->socket->disconnect($this->dsn);
             return $result;
         } catch (\ZMQException $e) {
             var_dump($e->getMessage());
@@ -51,5 +50,10 @@ class Client
     public function doBackground()
     {
 
+    }
+
+    public function close()
+    {
+        $this->socket->disconnect($this->dsn);
     }
 }
