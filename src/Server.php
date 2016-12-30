@@ -31,21 +31,52 @@ class Server
     protected $clientContext;
 
     /**
-     * @var \React\ZMQ\SocketWrapper $ccSocket
+     * @var \React\ZMQ\SocketWrapper $clientSocket
      */
     protected $clientSocket;
 
     /**
-     * @var \ZMQContext $workerContext
+     * @var \ZMQContext $workerJobContext
      */
-    protected $workerContext;
+    protected $workerJobContext;
 
     /**
-     * @var \ZMQSocket $workerSocket
+     * @var \ZMQSocket $workerJobSocket
      */
-    protected $workerSocket;
+    protected $workerJobSocket;
 
+    /**
+     * @var \ZMQContext $workerReplyContext
+     */
+    protected $workerReplyContext;
+
+    /**
+     * @var \React\ZMQ\SocketWrapper $workerReplySocket
+     */
+    protected $workerReplySocket;
+
+    /**
+     * @var array $processes
+     */
     protected $processes = [];
+
+    /**
+     * @var array $workerStates
+     */
+    protected $workerStates = [];
+
+    protected $workerJobs = [];
+
+    protected $workerStats = [];
+
+    protected $jobQueues = [];
+
+    protected $jobsInQueue = 0;
+
+    /**
+     * @var int $jobId
+     */
+    private $jobId = 0;
 
     public function __construct(array $config)
     {
@@ -68,13 +99,24 @@ class Server
     public function start()
     {
         $this->startClientSocket();
-        $this->startWorkerSocket();
+        $this->startWorkerJobSocket();
+        $this->startWorkerReplySocket();
         $this->startWorkerPools();
+
+        $this->loop->addPeriodicTimer(10, function () {
+            echo 'Worker States:' . PHP_EOL;
+            print_r($this->workerStates);
+            echo 'Worker Stats:' . PHP_EOL;
+            print_r($this->workerStats);
+            echo 'Jobs Queue:' . $this->jobsInQueue . PHP_EOL;
+        });
+
         $this->loop->run();
     }
 
     public function stop()
     {
+        $this->stopWorkerPools();
         $this->loop->stop();
     }
 
@@ -86,11 +128,19 @@ class Server
         $this->clientSocket->on('message', [$this, 'onClientMessage']);
     }
 
-    protected function startWorkerSocket()
+    protected function startWorkerJobSocket()
     {
-        $this->workerContext = new \ZMQContext;
-        $this->workerSocket = $this->workerContext->getSocket(\ZMQ::SOCKET_PUB);
-        $this->workerSocket->bind($this->config['sockets']['worker']);
+        $this->workerJobContext = new \ZMQContext;
+        $this->workerJobSocket = $this->workerJobContext->getSocket(\ZMQ::SOCKET_PUB);
+        $this->workerJobSocket->bind($this->config['sockets']['worker_job']);
+    }
+
+    protected function startWorkerReplySocket()
+    {
+        $this->workerReplyContext = new Context($this->loop);
+        $this->workerReplySocket = $this->workerReplyContext->getSocket(\ZMQ::SOCKET_REP);
+        $this->workerReplySocket->bind($this->config['sockets']['worker_reply']);
+        $this->workerReplySocket->on('message', [$this, 'onWorkerReplyMessage']);
     }
 
     public function onClientMessage(string $message)
@@ -101,7 +151,7 @@ class Server
                 $response = $this->handleCommand($data['command']['name']);
                 break;
             case 'job':
-                $response = $this->handleJob($data['job']['name'], $data['job']['workload']);
+                $response = $this->handleJobRequest($data['job']['name'], $data['job']['workload']);
                 break;
             default:
                 $response = 'Invalid action.';
@@ -112,6 +162,63 @@ class Server
         $this->clientSocket->send($response);
     }
 
+    public function onWorkerReplyMessage(string $message)
+    {
+        $data = json_decode($message, true);
+        if (!isset($data['request'])) {
+            throw new \RuntimeException('Invalid worker request received.');
+        }
+        switch ($data['request']) {
+            case 'register_job':
+                $response = $this->registerJob($data['job_name'], $data['worker_id']);
+                break;
+            case 'unregister_job':
+                $response = $this->registerJob($data['job_name'], $data['worker_id']);
+                break;
+            case 'change_state':
+                $response = $this->changeWorkerState($data['worker_id'], $data['state']);
+                break;
+            default:
+                $response = 'Invalid request.';
+                break;
+        }
+        $this->workerReplySocket->send($response);
+    }
+
+    protected function registerJob(string $jobName, string $workerId) : string
+    {
+        if (!isset($this->workerJobs[$jobName])) {
+            $this->workerJobs[$jobName] = [];
+        }
+        if (!in_array($workerId, $this->workerJobs[$jobName])) {
+            array_push($this->workerJobs[$jobName], $workerId);
+        }
+        return 'ok';
+    }
+
+    protected function unregisterJob(string $jobName, string $workerId) : string
+    {
+        if (!isset($this->workerJobs[$jobName])) {
+            return 'ok';
+        }
+        if (($key = array_search($workerId, $this->workerJobs[$jobName])) !== false) {
+            unset($this->workerJobs[$jobName][$key]);
+        }
+        if (empty($this->workerJobs[$jobName])) {
+            unset($this->workerJobs[$jobName]);
+        }
+        return 'ok';
+    }
+
+    protected function changeWorkerState(string $workerId, int $workerState) : string
+    {
+        $this->workerStates[$workerId] = $workerState;
+        if ($workerState === Worker::WORKER_STATE_IDLE) {
+            $this->pushJobs();
+        }
+        return 'ok';
+    }
+
     /**
      * Handles data received from child processes.
      *
@@ -120,7 +227,7 @@ class Server
      */
     public function onChildProcessOut(string $output) : bool
     {
-        var_dump($output);
+        echo "worker output: " . $output . PHP_EOL;
         return true;
     }
 
@@ -153,11 +260,41 @@ class Server
             try {
                 $process = $this->startChildProcess($poolConfig['worker_file']);
                 array_push($this->processes[$poolName], $process);
+                $workerPid = $process->getPid();
+                $workerId = $this->config['server_id'] . '_' . $workerPid;
+                $this->workerStates[$workerId] = Worker::WORKER_STATE_IDLE;
             } catch (\Exception $e) {
-                var_dump($e->getMessage());
-                $this->logger->warning(sprintf('Could not start child process. (Error: s)', $e->getMessage()));
+                // @todo Add error handling
             }
         }
+    }
+
+    protected function stopWorkerPools()
+    {
+        if (empty($this->processes)) {
+            return true;
+        }
+        foreach (array_keys($this->processes) as $poolName) {
+            $this->stopWorkerPool($poolName);
+        }
+    }
+
+    /**
+     * Terminates all child processes of given pool.
+     *
+     * @param string $poolName
+     * @return bool
+     */
+    protected function stopWorkerPool(string $poolName) : bool
+    {
+        if (empty($this->processes[$poolName])) {
+            return true;
+        }
+        foreach ($this->processes[$poolName] as $process) {
+            /** @var Process $process */
+            $process->terminate();
+        }
+        return true;
     }
 
     /**
@@ -171,7 +308,8 @@ class Server
      */
     protected function startChildProcess(string $pathToFile) : Process
     {
-        $startupCommand = 'exec php ' . $pathToFile;
+        $pathToConfig = $this->config['config_path'];
+        $startupCommand = 'exec php ' . $pathToFile . ' -c ' . $pathToConfig;
         $process = new Process($startupCommand);
         $process->start($this->loop);
 
@@ -193,12 +331,71 @@ class Server
         return 'error';
     }
 
-    protected function handleJob(string $jobName, string $payload = '') : string
+    protected function handleJobRequest(string $jobName, string $payload = '') : string
     {
-        $this->workerSocket->send($jobName, \ZMQ::MODE_SNDMORE);
-        $this->workerSocket->send($payload);
-        //$res = $this->workerSocket->recv();
-        //return $res;
+        $jobId = $this->addJobToQueue($jobName, $payload);
+        $this->pushJobs();
+        return $jobId;
+    }
+
+    protected function addJobToQueue(string $jobName, string $payload = '') : string
+    {
+        if (!isset($this->jobQueues[$jobName])) {
+            $this->jobQueues[$jobName] = [];
+        }
+        $jobId = $this->getJobId();
+        array_push($this->jobQueues[$jobName], [
+            'job_id' => $jobId,
+            'payload' => $payload
+        ]);
+        $this->jobsInQueue++;
+        return $jobId;
+    }
+
+    protected function pushJobs() : bool
+    {
+        if (empty($this->jobQueues)) {
+            return true;
+        }
+        foreach (array_keys($this->jobQueues) as $jobName) {
+            if (empty($this->jobQueues[$jobName])) {
+                continue;
+            }
+            $workerId = $this->getOptimalWorkerId($jobName);
+            if (empty($workerId)) {
+                continue;
+            }
+
+            if (!isset($this->workerStats[$workerId])) {
+                $this->workerStats[$workerId] = 0;
+            }
+            $this->workerStats[$workerId]++;
+
+            // send job to worker:
+            $this->jobsInQueue--;
+            $jobData = array_shift($this->jobQueues[$jobName]);
+            $this->workerJobSocket->send($jobName, \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($jobData['payload']);
+        }
+        return true;
+    }
+
+    protected function getJobId() : string
+    {
+        $this->jobId++;
+        return dechex($this->jobId);
+    }
+
+    protected function getOptimalWorkerId(string $jobName) : string
+    {
+        $workerIds = $this->workerJobs[$jobName];
+        foreach ($workerIds as $workerId) {
+            if ($this->workerStates[$workerId] === Worker::WORKER_STATE_IDLE) {
+                return $workerId;
+            }
+        }
         return '';
     }
 }

@@ -10,7 +10,8 @@ class WorkerA extends Worker
 {
     public function taskA(string $payload)
     {
-        echo 'hi this is workerA. I am executing taskA...';
+        //echo "worker " . $this->workerId . ' doing taskA with payload: ' . $payload . PHP_EOL;
+        sleep(rand(1, 3));
     }
 }
 

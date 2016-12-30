@@ -1,8 +1,14 @@
 <?php
 
 return [
+    // Unique identifier for each server:
+    'server_id' => 's1',
+
     // Path to your angela script:
     'script_path' => __DIR__ . '/angela.php',
+
+    // Path to configuration file (required to pass to worker processes)
+    'config_path' => __FILE__,
 
     // Path to php-binary on your server:
     'php_path' => 'php',
@@ -21,7 +27,9 @@ return [
         // Command/Control socket for server:
         'client' => 'tcp://127.0.0.1:5551',
 
-        'worker' => 'tcp://127.0.0.1:5552',
+        'worker_job' => 'ipc://worker_jobs.ipc',
+
+        'worker_reply' => 'ipc://worker_reply.ipc',
     ],
 
     // Process pool configuration. Add as many pools as you like.
@@ -34,7 +42,7 @@ return [
             'worker_file' => __DIR__ . '/worker/worker_a.php',
 
             // Number of child processes created on startup:
-            'cp_start' => 2,
+            'cp_start' => 15,
         ],
 
         /*

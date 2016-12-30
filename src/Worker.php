@@ -8,6 +8,12 @@ use React\ZMQ\Context;
 
 abstract class Worker
 {
+    const WORKER_STATE_UNINITIALIZED = 0;
+
+    const WORKER_STATE_IDLE = 1;
+
+    const WORKER_STATE_BUSY = 2;
+
     /**
      * @var array $config
      */
@@ -24,33 +30,70 @@ abstract class Worker
     protected $readStream;
 
     /**
-     * @var Context $context
+     * @var Context $jobContext
      */
-    protected $context = null;
+    protected $jobContext = null;
 
     /**
-     * @var \React\ZMQ\SocketWrapper $socket
+     * @var \React\ZMQ\SocketWrapper $jobSocket
      */
-    protected $socket = null;
+    protected $jobSocket = null;
+
+    /**
+     * @var Context $replyContext
+     */
+    protected $replyContext = null;
+
+    /**
+     * @var \React\ZMQ\SocketWrapper $replySocket
+     */
+    protected $replySocket = null;
 
     /**
      * @var array
      */
     protected $callbacks = [];
 
+    /**
+     * @var int $jobId
+     */
+    protected $jobId = 0;
+
+    /**
+     * @var string $workerId
+     */
+    protected $workerId = null;
+
+    /**
+     * @var int $workerState
+     */
+    protected $workerState = 0;
+
     public function __construct()
     {
         // create workers main event loop:
         $this->loop = EventLoopFactory::create();
 
+        $this->loadConfig();
+        $this->setWorkerId();
         $this->openInputStream();
-        $this->startWorkerSocket();
+        $this->startJobSocket();
+        $this->startReplySocket();
+        $this->setIdle();
     }
 
     public function registerJob(string $jobName, callable $callback)
     {
         $this->callbacks[$jobName] = $callback;
-        $this->socket->subscribe($jobName);
+        $this->jobSocket->subscribe($jobName);
+
+        // register job at server:
+        $this->replySocket->send(json_encode([
+            'request' => 'register_job',
+            'worker_id' => $this->workerId,
+            'job_name' => $jobName
+        ]));
+        $response = $this->replySocket->recv();
     }
 
     protected function openInputStream()
@@ -64,12 +107,19 @@ abstract class Worker
         });
     }
 
-    protected function startWorkerSocket()
+    protected function startJobSocket()
     {
-        $this->context = new Context($this->loop);
-        $this->socket = $this->context->getSocket(\ZMQ::SOCKET_SUB);
-        $this->socket->connect("tcp://127.0.0.1:5552");
-        $this->socket->on('messages', [$this, 'onJobMessage']);
+        $this->jobContext = new Context($this->loop);
+        $this->jobSocket = $this->jobContext->getSocket(\ZMQ::SOCKET_SUB);
+        $this->jobSocket->connect($this->config['sockets']['worker_job']);
+        $this->jobSocket->on('messages', [$this, 'onJobMessage']);
+    }
+
+    protected function startReplySocket()
+    {
+        $this->replyContext = new \ZMQContext;
+        $this->replySocket = $this->replyContext->getSocket(\ZMQ::SOCKET_REQ);
+        $this->replySocket->connect($this->config['sockets']['worker_reply']);
     }
 
     /**
@@ -80,18 +130,69 @@ abstract class Worker
      */
     public function onCommand(string $input) : bool
     {
-        var_dump($input);
         return true;
     }
 
     public function onJobMessage(array $message)
     {
         $jobName = $message[0];
-        $payload = $message[1];
+        $jobId = $message[1];
+        $workerId = $message[2];
+        $payload = $message[3];
+        if ($workerId !== $this->workerId) {
+            return true;
+        }
         if (!isset($this->callbacks[$jobName])) {
             throw new \RuntimeException('No callback found for requested job.');
         }
+        $this->setBusy();
         call_user_func($this->callbacks[$jobName], $payload);
+        $this->setIdle();
+    }
+
+    protected function setBusy()
+    {
+        $this->workerState = self::WORKER_STATE_BUSY;
+
+        // report idle state to server:
+        $this->replySocket->send(json_encode([
+            'request' => 'change_state',
+            'worker_id' => $this->workerId,
+            'state' => $this->workerState
+        ]));
+        $response = $this->replySocket->recv();
+    }
+
+    protected function setIdle()
+    {
+        $this->workerState = self::WORKER_STATE_IDLE;
+
+        // report idle state to server:
+        $this->replySocket->send(json_encode([
+            'request' => 'change_state',
+            'worker_id' => $this->workerId,
+            'state' => $this->workerState
+        ]));
+        $response = $this->replySocket->recv();
+    }
+
+    protected function loadConfig()
+    {
+        $options = getopt('c:');
+        if (!isset($options['c'])) {
+            throw new \RuntimeException('No path to configuration provided.');
+        }
+        $pathToConfig = $options['c'];
+        if (!file_exists($pathToConfig)) {
+            throw new \RuntimeException('Config file not found.');
+        }
+        $this->config = require $pathToConfig;
+    }
+
+    protected function setWorkerId()
+    {
+        $pid = getmypid();
+        $this->workerId = $this->config['server_id'] . '_' . $pid;
     }
 
     /**
@@ -109,5 +210,4 @@ abstract class Worker
     {
         $this->loop->run();
     }
-
 }
