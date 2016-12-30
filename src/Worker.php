@@ -25,39 +25,39 @@ abstract class Worker
     protected $loop;
 
     /**
+     * Input stream to receive control commands from server.
+     *
      * @var Stream $readStream
      */
     protected $readStream;
 
     /**
-     * @var Context $jobContext
-     */
-    protected $jobContext = null;
-
-    /**
-     * @var \React\ZMQ\SocketWrapper $jobSocket
+     * Socket to received job requests.
+     *
+     * @var \React\ZMQ\SocketWrapper|\ZMQSocket $jobSocket
      */
     protected $jobSocket = null;
 
     /**
-     * @var Context $replyContext
-     */
-    protected $replyContext = null;
-
-    /**
-     * @var \React\ZMQ\SocketWrapper $replySocket
+     * Socket to reply to server.
+     *
+     * @var \React\ZMQ\SocketWrapper|\ZMQSocket $replySocket
      */
     protected $replySocket = null;
 
     /**
-     * @var array
+     * Holds callbacks for each job a worker can do.
+     *
+     * @var array $callbacks
      */
     protected $callbacks = [];
 
     /**
+     * Id of current job.
+     *
      * @var int $jobId
      */
-    protected $jobId = 0;
+    protected $jobId = null;
 
     /**
      * @var string $workerId
@@ -65,6 +65,8 @@ abstract class Worker
     protected $workerId = null;
 
     /**
+     * Holds current worker-state.
+     *
      * @var int $workerState
      */
     protected $workerState = 0;
@@ -76,13 +78,20 @@ abstract class Worker
 
         $this->loadConfig();
         $this->setWorkerId();
-        $this->openInputStream();
-        $this->startJobSocket();
-        $this->startReplySocket();
-        $this->setIdle();
+        $this->createInputStream();
+        $this->createJobSocket();
+        $this->createReplySocket();
+        $this->setState(Worker::WORKER_STATE_IDLE);
     }
 
-    public function registerJob(string $jobName, callable $callback)
+    /**
+     * Registers a type of job the worker is able to do.
+     *
+     * @param string $jobName
+     * @param callable $callback
+     * @return bool
+     */
+    public function registerJob(string $jobName, callable $callback) : bool
     {
         $this->callbacks[$jobName] = $callback;
         $this->jobSocket->subscribe($jobName);
@@ -94,9 +103,13 @@ abstract class Worker
             'job_name' => $jobName
         ]));
         $response = $this->replySocket->recv();
+        return ($response === 'ok');
     }
 
-    protected function openInputStream()
+    /**
+     * Creates a stream to receive control commands from server and registers corresponding callbacks.
+     */
+    protected function createInputStream()
     {
         // creates input stream for worker:
         $this->readStream = new Stream(STDIN, $this->loop);
@@ -107,24 +120,32 @@ abstract class Worker
         });
     }
 
-    protected function startJobSocket()
+    /**
+     * Creates socket to receive jobs from server and registers corresponding callbacks.
+     */
+    protected function createJobSocket()
     {
-        $this->jobContext = new Context($this->loop);
-        $this->jobSocket = $this->jobContext->getSocket(\ZMQ::SOCKET_SUB);
+        /** @var Context|\ZMQContext $jobContext */
+        $jobContext = new Context($this->loop);
+        $this->jobSocket = $jobContext->getSocket(\ZMQ::SOCKET_SUB);
         $this->jobSocket->connect($this->config['sockets']['worker_job']);
         $this->jobSocket->on('messages', [$this, 'onJobMessage']);
     }
 
-    protected function startReplySocket()
+    /**
+     * Creates socket used to reply to server.
+     */
+    protected function createReplySocket()
     {
-        $this->replyContext = new \ZMQContext;
-        $this->replySocket = $this->replyContext->getSocket(\ZMQ::SOCKET_REQ);
+        $replyContext = new \ZMQContext;
+        $this->replySocket = $replyContext->getSocket(\ZMQ::SOCKET_REQ);
         $this->replySocket->connect($this->config['sockets']['worker_reply']);
     }
 
     /**
-     * Handles commands the worker receives from the parent process.
+     * Handles commands the worker receives from server.
      *
+     * @todo Implement command handling
      * @param string $input
      * @return bool
      */
@@ -133,26 +154,47 @@ abstract class Worker
         return true;
     }
 
-    public function onJobMessage(array $message)
+    /**
+     * Handles job requests received from server.
+     *
+     * @param array $message
+     * @return bool
+     */
+    public function onJobMessage(array $message) : bool
     {
         $jobName = $message[0];
         $jobId = $message[1];
         $workerId = $message[2];
         $payload = $message[3];
+
+        // Skip if job is assigned to another worker:
         if ($workerId !== $this->workerId) {
-            return true;
+            return false;
         }
+
+        // Skip if worker can not handle the requested job
         if (!isset($this->callbacks[$jobName])) {
             throw new \RuntimeException('No callback found for requested job.');
         }
-        $this->setBusy();
+
+        // Switch to busy state handle job and switch back to idle state:
+        $this->jobId = $jobId;
+        $this->setState(Worker::WORKER_STATE_BUSY);
         call_user_func($this->callbacks[$jobName], $payload);
-        $this->setIdle();
+        $this->setState(Worker::WORKER_STATE_IDLE);
+        $this->jobId = null;
+        return true;
     }
 
-    protected function setBusy()
+    /**
+     * Sets a new worker state and reports this state to server.
+     *
+     * @param int $state
+     * @return bool
+     */
+    protected function setState(int $state) : bool
     {
-        $this->workerState = self::WORKER_STATE_BUSY;
+        $this->workerState = $state;
 
         // report idle state to server:
         $this->replySocket->send(json_encode([
@@ -161,21 +203,12 @@ abstract class Worker
             'state' => $this->workerState
         ]));
         $response = $this->replySocket->recv();
+        return ($response === 'ok');
     }
 
-    protected function setIdle()
-    {
-        $this->workerState = self::WORKER_STATE_IDLE;
-
-        // report idle state to server:
-        $this->replySocket->send(json_encode([
-            'request' => 'change_state',
-            'worker_id' => $this->workerId,
-            'state' => $this->workerState
-        ]));
-        $response = $this->replySocket->recv();
-    }
-
+    /**
+     * Loads configuration from config file passed in via argument.
+     */
     protected function loadConfig()
     {
         $options = getopt('c:');
@@ -189,6 +222,9 @@ abstract class Worker
         $this->config = require $pathToConfig;
     }
 
+    /**
+     * Sets ID of the worker using a server-id and the PID of the process.
+     */
     protected function setWorkerId()
     {
         $pid = getmypid();
@@ -196,16 +232,8 @@ abstract class Worker
     }
 
     /**
-     * Closes the input/read stream.
+     * Run main loop and wait for jobs.
      */
-    protected function closeInputStream()
-    {
-        $this->readStream->close();
-        unset($this->readStream);
-        $this->loop->stop();
-        unset($this->loop);
-    }
-
     public function run()
     {
         $this->loop->run();

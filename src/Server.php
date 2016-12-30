@@ -156,6 +156,7 @@ class Server
      */
     protected function createClientSocket()
     {
+        /** @var Context|\ZMQContext $clientContext */
         $clientContext = new Context($this->loop);
         $this->clientSocket = $clientContext->getSocket(\ZMQ::SOCKET_REP);
         $this->clientSocket->bind($this->config['sockets']['client']);
@@ -177,6 +178,7 @@ class Server
      */
     protected function createWorkerReplySocket()
     {
+        /** @var Context|\ZMQContext $workerReplyContext */
         $workerReplyContext = new Context($this->loop);
         $this->workerReplySocket = $workerReplyContext->getSocket(\ZMQ::SOCKET_REP);
         $this->workerReplySocket->bind($this->config['sockets']['worker_reply']);

@@ -1,6 +1,6 @@
 <?php
 
-namespace Nekudo\Angela\Demo;
+namespace Nekudo\Angela\Example;
 
 use Nekudo\Angela\Worker;
 
