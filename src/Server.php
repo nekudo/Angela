@@ -8,9 +8,18 @@ use Psr\Log\LoggerInterface;
 use React\ZMQ\Context;
 use React\ChildProcess\Process;
 
+/**
+ * @todo Add getStats command.
+ * @todo Add periodic timer to check for "lost jobs" in queue.
+ * @todo Use logger
+ * @todo Use exceptions
+ */
+
 class Server
 {
     /**
+     * Holds the server configuration.
+     *
      * @var array $config
      */
     protected $config;
@@ -26,54 +35,71 @@ class Server
     protected $loop;
 
     /**
-     * @var \ZMQContext $clientContext
-     */
-    protected $clientContext;
-
-    /**
+     * A reply-socket used to receive data (commands, job-requests, e.g.) from clients.
+     *
      * @var \React\ZMQ\SocketWrapper $clientSocket
      */
     protected $clientSocket;
 
     /**
-     * @var \ZMQContext $workerJobContext
-     */
-    protected $workerJobContext;
-
-    /**
+     * A publish-socket used to distribute jobs to worker processes.
+     *
      * @var \ZMQSocket $workerJobSocket
      */
     protected $workerJobSocket;
 
     /**
-     * @var \ZMQContext $workerReplyContext
-     */
-    protected $workerReplyContext;
-
-    /**
+     * A reply-socket used to receive data from worker-processes.
+     *
      * @var \React\ZMQ\SocketWrapper $workerReplySocket
      */
     protected $workerReplySocket;
 
     /**
+     * Holds all child processes.
+     *
      * @var array $processes
      */
     protected $processes = [];
 
     /**
+     * Holds states (busy, idle, ...) of all known worker-processes.
+     *
      * @var array $workerStates
      */
     protected $workerStates = [];
 
+    /**
+     * Holds information on which worker can do which kind of jobs.
+     *
+     * @var array $workerJobs
+     */
     protected $workerJobs = [];
 
+    /**
+     * Holds worker statistics.
+     *
+     * @var array $workerStats
+     */
     protected $workerStats = [];
 
+    /**
+     * Holds job-requests separated by job-type.
+     *
+     * @var array $jobQueues
+     */
     protected $jobQueues = [];
 
+    /**
+     * Stores how many job-requests are currently in queue.
+     *
+     * @var int $jobsInQueue
+     */
     protected $jobsInQueue = 0;
 
     /**
+     * Simple job counter used to generate job ids.
+     *
      * @var int $jobId
      */
     private $jobId = 0;
@@ -91,58 +117,77 @@ class Server
         $this->loop = EventLoopFactory::create();
     }
 
+    /**
+     * Injects logger
+     *
+     * @param LoggerInterface $logger
+     */
     public function setLogger(LoggerInterface $logger)
     {
         $this->logger = $logger;
     }
 
+    /**
+     * Creates sockets and fires up worker processes.
+     */
     public function start()
     {
-        $this->startClientSocket();
-        $this->startWorkerJobSocket();
-        $this->startWorkerReplySocket();
+        $this->createClientSocket();
+        $this->createWorkerJobSocket();
+        $this->createWorkerReplySocket();
         $this->startWorkerPools();
-
-        $this->loop->addPeriodicTimer(10, function () {
-            echo 'Worker States:' . PHP_EOL;
-            print_r($this->workerStates);
-            echo 'Worker Stats:' . PHP_EOL;
-            print_r($this->workerStats);
-            echo 'Jobs Queue:' . $this->jobsInQueue . PHP_EOL;
-        });
-
         $this->loop->run();
     }
 
+    /**
+     * Close sockets, stop worker processes and stop main event loop.
+     */
     public function stop()
     {
         $this->stopWorkerPools();
+        $this->clientSocket->close();
+        $this->workerJobSocket->disconnect($this->config['sockets']['worker_job']);
+        $this->workerReplySocket->close();
         $this->loop->stop();
     }
 
-    protected function startClientSocket()
+    /**
+     * Creates client-socket and assigns listener.
+     */
+    protected function createClientSocket()
     {
-        $this->clientContext = new Context($this->loop);
-        $this->clientSocket = $this->clientContext->getSocket(\ZMQ::SOCKET_REP);
+        $clientContext = new Context($this->loop);
+        $this->clientSocket = $clientContext->getSocket(\ZMQ::SOCKET_REP);
         $this->clientSocket->bind($this->config['sockets']['client']);
         $this->clientSocket->on('message', [$this, 'onClientMessage']);
     }
 
-    protected function startWorkerJobSocket()
+    /**
+     * Creates worker-job-socket.
+     */
+    protected function createWorkerJobSocket()
     {
-        $this->workerJobContext = new \ZMQContext;
-        $this->workerJobSocket = $this->workerJobContext->getSocket(\ZMQ::SOCKET_PUB);
+        $workerJobContext = new \ZMQContext;
+        $this->workerJobSocket = $workerJobContext->getSocket(\ZMQ::SOCKET_PUB);
         $this->workerJobSocket->bind($this->config['sockets']['worker_job']);
     }
 
-    protected function startWorkerReplySocket()
+    /**
+     * Creates worker-reply-socket and assigns listener.
+     */
+    protected function createWorkerReplySocket()
     {
-        $this->workerReplyContext = new Context($this->loop);
-        $this->workerReplySocket = $this->workerReplyContext->getSocket(\ZMQ::SOCKET_REP);
+        $workerReplyContext = new Context($this->loop);
+        $this->workerReplySocket = $workerReplyContext->getSocket(\ZMQ::SOCKET_REP);
         $this->workerReplySocket->bind($this->config['sockets']['worker_reply']);
         $this->workerReplySocket->on('message', [$this, 'onWorkerReplyMessage']);
     }
 
+    /**
+     * Handles incoming client requests.
+     *
+     * @param string $message Json-encoded data received from client.
+     */
     public function onClientMessage(string $message)
     {
         $data = json_decode($message, true);
@@ -156,72 +201,42 @@ class Server
             default:
                 $response = 'Invalid action.';
                 break;
-
         }
 
         $this->clientSocket->send($response);
     }
 
+    /**
+     * Handles incoming worker requests.
+     *
+     * @param string $message Json-encoded data received from worker.
+     */
     public function onWorkerReplyMessage(string $message)
     {
         $data = json_decode($message, true);
         if (!isset($data['request'])) {
             throw new \RuntimeException('Invalid worker request received.');
         }
+        $result = null;
         switch ($data['request']) {
             case 'register_job':
-                $response = $this->registerJob($data['job_name'], $data['worker_id']);
+                $result = $this->registerJob($data['job_name'], $data['worker_id']);
                 break;
             case 'unregister_job':
-                $response = $this->registerJob($data['job_name'], $data['worker_id']);
+                $result = $this->unregisterJob($data['job_name'], $data['worker_id']);
                 break;
             case 'change_state':
-                $response = $this->changeWorkerState($data['worker_id'], $data['state']);
-                break;
-            default:
-                $response = 'Invalid request.';
+                $result = $this->changeWorkerState($data['worker_id'], $data['state']);
                 break;
         }
+        $response = ($result === true) ? 'ok' : 'error';
         $this->workerReplySocket->send($response);
-    }
-
-    protected function registerJob(string $jobName, string $workerId) : string
-    {
-        if (!isset($this->workerJobs[$jobName])) {
-            $this->workerJobs[$jobName] = [];
-        }
-        if (!in_array($workerId, $this->workerJobs[$jobName])) {
-            array_push($this->workerJobs[$jobName], $workerId);
-        }
-        return 'ok';
-    }
-
-    protected function unregisterJob(string $jobName, string $workerId) : string
-    {
-        if (!isset($this->workerJobs[$jobName])) {
-            return 'ok';
-        }
-        if (($key = array_search($workerId, $this->workerJobs[$jobName])) !== false) {
-            unset($this->workerJobs[$jobName][$key]);
-        }
-        if (empty($this->workerJobs[$jobName])) {
-            unset($this->workerJobs[$jobName]);
-        }
-        return 'ok';
-    }
-
-    protected function changeWorkerState(string $workerId, int $workerState) : string
-    {
-        $this->workerStates[$workerId] = $workerState;
-        if ($workerState === Worker::WORKER_STATE_IDLE) {
-            $this->pushJobs();
-        }
-        return 'ok';
     }
 
     /**
      * Handles data received from child processes.
      *
+     * @todo Log these messages. By default workers should be silent.
      * @param string $output
      * @return bool
      */
@@ -231,7 +246,186 @@ class Server
         return true;
     }
 
-    protected function startWorkerPools()
+    /**
+     * Registers a new job-type a workers is capable of doing.
+     *
+     * @param string $jobName
+     * @param string $workerId
+     * @return bool
+     */
+    protected function registerJob(string $jobName, string $workerId) : bool
+    {
+        if (!isset($this->workerJobs[$jobName])) {
+            $this->workerJobs[$jobName] = [];
+        }
+        if (!in_array($workerId, $this->workerJobs[$jobName])) {
+            array_push($this->workerJobs[$jobName], $workerId);
+        }
+        return true;
+    }
+
+    /**
+     * Unregisters a job-type so the worker will no longer receive jobs of this type.
+     *
+     * @param string $jobName
+     * @param string $workerId
+     * @return bool
+     */
+    protected function unregisterJob(string $jobName, string $workerId) : bool
+    {
+        if (!isset($this->workerJobs[$jobName])) {
+            return true;
+        }
+        if (($key = array_search($workerId, $this->workerJobs[$jobName])) !== false) {
+            unset($this->workerJobs[$jobName][$key]);
+        }
+        if (empty($this->workerJobs[$jobName])) {
+            unset($this->workerJobs[$jobName]);
+        }
+        return true;
+    }
+
+    /**
+     * Changes the state a worker currently has.
+     *
+     * @param string $workerId
+     * @param int $workerState
+     * @return bool
+     */
+    protected function changeWorkerState(string $workerId, int $workerState) : bool
+    {
+        $this->workerStates[$workerId] = $workerState;
+        if ($workerState === Worker::WORKER_STATE_IDLE) {
+            $this->pushJobs();
+        }
+        return true;
+    }
+
+    /**
+     * Executes commands received from a client.
+     *
+     * @param string $command
+     * @return string
+     */
+    protected function handleCommand(string $command) : string
+    {
+        switch ($command) {
+            case 'stop':
+                $this->loop->stop();
+                return 'ok';
+        }
+        return 'error';
+    }
+
+    /**
+     * Handles job-requests received from a client.
+     *
+     * @param string $jobName
+     * @param string $payload
+     * @return string The id assigned to the job.
+     */
+    protected function handleJobRequest(string $jobName, string $payload = '') : string
+    {
+        $jobId = $this->addJobToQueue($jobName, $payload);
+        $this->pushJobs();
+        return $jobId;
+    }
+
+    /**
+     * Adds a new job-requests to corresponding queue.
+     *
+     * @param string $jobName
+     * @param string $payload
+     * @return string The id assigned to the job.
+     */
+    protected function addJobToQueue(string $jobName, string $payload = '') : string
+    {
+        if (!isset($this->jobQueues[$jobName])) {
+            $this->jobQueues[$jobName] = [];
+        }
+        $jobId = $this->getJobId();
+        array_push($this->jobQueues[$jobName], [
+            'job_id' => $jobId,
+            'payload' => $payload
+        ]);
+        $this->jobsInQueue++;
+        return $jobId;
+    }
+
+    /**
+     * Runs trough the job queue and pushes jobs to workers if an idle worker is available.
+     *
+     * @return bool
+     */
+    protected function pushJobs() : bool
+    {
+        // Skip if no jobs currently in queue
+        if (empty($this->jobQueues)) {
+            return true;
+        }
+
+        // Run through job queue and and handle job requests
+        foreach (array_keys($this->jobQueues) as $jobName) {
+            // Skip queue if no jobs are queued
+            if (empty($this->jobQueues[$jobName])) {
+                continue;
+            }
+            // Skip if no worker is idle and can do the job
+            $workerId = $this->getOptimalWorkerId($jobName);
+            if (empty($workerId)) {
+                continue;
+            }
+            // Count the jobs for each worker
+            if (!isset($this->workerStats[$workerId])) {
+                $this->workerStats[$workerId] = 0;
+            }
+            $this->workerStats[$workerId]++;
+
+            // Send job to worker
+            $jobData = array_shift($this->jobQueues[$jobName]);
+            $this->jobsInQueue--;
+            $this->workerJobSocket->send($jobName, \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($jobData['payload']);
+        }
+        return true;
+    }
+
+    /**
+     * Gets a job-id which is just a count of jobs converted to a hex value.
+     *
+     * @return string
+     */
+    protected function getJobId() : string
+    {
+        $this->jobId++;
+        return dechex($this->jobId);
+    }
+
+    /**
+     * Finds an idle worker capable of completing a job of the requested type.
+     *
+     * @param string $jobName
+     * @return string A worker-id or empty string of no idle worker was found.
+     */
+    protected function getOptimalWorkerId(string $jobName) : string
+    {
+        $workerIds = $this->workerJobs[$jobName];
+        foreach ($workerIds as $workerId) {
+            if ($this->workerStates[$workerId] === Worker::WORKER_STATE_IDLE) {
+                return $workerId;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Starts all worker pools defined in configuration.
+     *
+     * @return bool
+     */
+    protected function startWorkerPools() : bool
     {
         if (empty($this->config['pool'])) {
             throw new \RuntimeException('No worker pool defined. Check config file.');
@@ -239,6 +433,7 @@ class Server
         foreach ($this->config['pool'] as $poolName => $poolConfig) {
             $this->startWorkerPool($poolName, $poolConfig);
         }
+        return true;
     }
 
     /**
@@ -269,7 +464,12 @@ class Server
         }
     }
 
-    protected function stopWorkerPools()
+    /**
+     * Stops processes of all pools.
+     *
+     * @return bool
+     */
+    protected function stopWorkerPools() : bool
     {
         if (empty($this->processes)) {
             return true;
@@ -277,6 +477,7 @@ class Server
         foreach (array_keys($this->processes) as $poolName) {
             $this->stopWorkerPool($poolName);
         }
+        return true;
     }
 
     /**
@@ -319,83 +520,5 @@ class Server
         });
 
         return $process;
-    }
-
-    protected function handleCommand(string $command) : string
-    {
-        switch ($command) {
-            case 'stop':
-                $this->loop->stop();
-                return 'ok';
-        }
-        return 'error';
-    }
-
-    protected function handleJobRequest(string $jobName, string $payload = '') : string
-    {
-        $jobId = $this->addJobToQueue($jobName, $payload);
-        $this->pushJobs();
-        return $jobId;
-    }
-
-    protected function addJobToQueue(string $jobName, string $payload = '') : string
-    {
-        if (!isset($this->jobQueues[$jobName])) {
-            $this->jobQueues[$jobName] = [];
-        }
-        $jobId = $this->getJobId();
-        array_push($this->jobQueues[$jobName], [
-            'job_id' => $jobId,
-            'payload' => $payload
-        ]);
-        $this->jobsInQueue++;
-        return $jobId;
-    }
-
-    protected function pushJobs() : bool
-    {
-        if (empty($this->jobQueues)) {
-            return true;
-        }
-        foreach (array_keys($this->jobQueues) as $jobName) {
-            if (empty($this->jobQueues[$jobName])) {
-                continue;
-            }
-            $workerId = $this->getOptimalWorkerId($jobName);
-            if (empty($workerId)) {
-                continue;
-            }
-
-            if (!isset($this->workerStats[$workerId])) {
-                $this->workerStats[$workerId] = 0;
-            }
-            $this->workerStats[$workerId]++;
-
-            // send job to worker:
-            $this->jobsInQueue--;
-            $jobData = array_shift($this->jobQueues[$jobName]);
-            $this->workerJobSocket->send($jobName, \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($jobData['payload']);
-        }
-        return true;
-    }
-
-    protected function getJobId() : string
-    {
-        $this->jobId++;
-        return dechex($this->jobId);
-    }
-
-    protected function getOptimalWorkerId(string $jobName) : string
-    {
-        $workerIds = $this->workerJobs[$jobName];
-        foreach ($workerIds as $workerId) {
-            if ($this->workerStates[$workerId] === Worker::WORKER_STATE_IDLE) {
-                return $workerId;
-            }
-        }
-        return '';
     }
 }
