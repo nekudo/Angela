@@ -47,9 +47,21 @@ class Client
         }
     }
 
-    public function doBackground()
+    public function doBackground(string $jobName, string $workload) : string
     {
-
+        try {
+            $this->socket->send(json_encode([
+                'action' => 'background_job',
+                'job' => [
+                    'name' => $jobName,
+                    'workload' => $workload
+                ]
+            ]));
+            $result = $this->socket->recv();
+            return $result;
+        } catch (\ZMQException $e) {
+            var_dump($e->getMessage());
+        }
     }
 
     public function close()

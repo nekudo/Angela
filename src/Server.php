@@ -13,6 +13,7 @@ use React\ChildProcess\Process;
  * @todo Add periodic timer to check for "lost jobs" in queue.
  * @todo Use logger
  * @todo Use exceptions
+ * @todo Ensure client server communication is async/non-blocking
  */
 
 class Server
@@ -98,6 +99,13 @@ class Server
     protected $jobsInQueue = 0;
 
     /**
+     * Holds type for each job.
+     *
+     * @var array $jobTypes
+     */
+    protected $jobTypes = [];
+
+    /**
      * Simple job counter used to generate job ids.
      *
      * @var int $jobId
@@ -136,6 +144,15 @@ class Server
         $this->createWorkerJobSocket();
         $this->createWorkerReplySocket();
         $this->startWorkerPools();
+
+        $this->loop->addPeriodicTimer(5, function () {
+            echo 'Worker Status: ' . PHP_EOL;
+            print_r($this->workerStates);
+            echo 'Worker Stats: ' . PHP_EOL;
+            print_r($this->workerStats);
+            echo 'Jobs in queue: '  . $this->jobsInQueue . PHP_EOL;
+        });
+
         $this->loop->run();
     }
 
@@ -195,17 +212,18 @@ class Server
         $data = json_decode($message, true);
         switch ($data['action']) {
             case 'command':
-                $response = $this->handleCommand($data['command']['name']);
+                $this->handleCommand($data['command']['name']);
                 break;
             case 'job':
-                $response = $this->handleJobRequest($data['job']['name'], $data['job']['workload']);
+                $this->handleJobRequest($data['job']['name'], $data['job']['workload'], false);
+                break;
+            case 'background_job':
+                $this->handleJobRequest($data['job']['name'], $data['job']['workload'], true);
                 break;
             default:
-                $response = 'Invalid action.';
+                $this->clientSocket->send('error: unknown action');
                 break;
         }
-
-        $this->clientSocket->send($response);
     }
 
     /**
@@ -229,6 +247,9 @@ class Server
                 break;
             case 'change_state':
                 $result = $this->changeWorkerState($data['worker_id'], $data['state']);
+                break;
+            case 'job_completed':
+                $this->onJobCompleted($data['job_id'], $data['result']);
                 break;
         }
         $response = ($result === true) ? 'ok' : 'error';
@@ -304,19 +325,36 @@ class Server
     }
 
     /**
+     * Handles a completed job. Sends results back to client if it was not a background job.
+     *
+     * @param string $jobId
+     * @param string $result
+     */
+    protected function onJobCompleted(string $jobId, string $result = '')
+    {
+        $jobType = $this->jobTypes[$jobId];
+        if ($jobType === 'normal') {
+            $this->clientSocket->send($result);
+        }
+        unset($this->jobTypes[$jobId]);
+    }
+
+    /**
      * Executes commands received from a client.
      *
      * @param string $command
-     * @return string
+     * @return bool
      */
-    protected function handleCommand(string $command) : string
+    protected function handleCommand(string $command) : bool
     {
         switch ($command) {
             case 'stop':
                 $this->loop->stop();
-                return 'ok';
+                $this->clientSocket->send('ok');
+                return true;
         }
-        return 'error';
+        $this->clientSocket->send('error');
+        return false;
     }
 
     /**
@@ -324,12 +362,17 @@ class Server
      *
      * @param string $jobName
      * @param string $payload
+     * @param bool $backgroundJob
      * @return string The id assigned to the job.
      */
-    protected function handleJobRequest(string $jobName, string $payload = '') : string
+    protected function handleJobRequest(string $jobName, string $payload = '', bool $backgroundJob = false) : string
     {
         $jobId = $this->addJobToQueue($jobName, $payload);
+        $this->jobTypes[$jobId] = ($backgroundJob === true) ? 'background' : 'normal';
         $this->pushJobs();
+        if ($backgroundJob === true) {
+            $this->clientSocket->send($jobId);
+        }
         return $jobId;
     }
 

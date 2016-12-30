@@ -180,9 +180,9 @@ abstract class Worker
         // Switch to busy state handle job and switch back to idle state:
         $this->jobId = $jobId;
         $this->setState(Worker::WORKER_STATE_BUSY);
-        call_user_func($this->callbacks[$jobName], $payload);
+        $result = call_user_func($this->callbacks[$jobName], $payload);
+        $this->onJobCompleted($result);
         $this->setState(Worker::WORKER_STATE_IDLE);
-        $this->jobId = null;
         return true;
     }
 
@@ -203,6 +203,25 @@ abstract class Worker
             'state' => $this->workerState
         ]));
         $response = $this->replySocket->recv();
+        return ($response === 'ok');
+    }
+
+    /**
+     * Sends results of a job back to server.
+     *
+     * @param string $result
+     * @return bool
+     */
+    protected function onJobCompleted(string $result) : bool
+    {
+        $this->replySocket->send(json_encode([
+            'request' => 'job_completed',
+            'worker_id' => $this->workerId,
+            'job_id' => $this->jobId,
+            'result' => $result
+        ]));
+        $response = $this->replySocket->recv();
+        $this->jobId = null;
         return ($response === 'ok');
     }
 
