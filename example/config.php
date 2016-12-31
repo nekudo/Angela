@@ -42,7 +42,7 @@ return [
             'worker_file' => __DIR__ . '/worker/worker_a.php',
 
             // Number of child processes created on startup:
-            'cp_start' => 3,
+            'cp_start' => 5,
         ],
 
         /*

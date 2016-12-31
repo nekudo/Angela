@@ -98,7 +98,7 @@ class Server
     protected $jobsInQueue = 0;
 
     /**
-     * Holds type for each job.
+     * Holds type (background or normal) for each job.
      *
      * @var array $jobTypes
      */
@@ -151,6 +151,7 @@ class Server
         $this->createWorkerReplySocket();
         $this->startWorkerPools();
 
+        /*
         $this->loop->addPeriodicTimer(5, function () {
             echo 'Worker Status: ' . PHP_EOL;
             print_r($this->workerStates);
@@ -158,6 +159,7 @@ class Server
             print_r($this->workerStats);
             echo 'Jobs in queue: '  . $this->jobsInQueue . PHP_EOL;
         });
+        */
 
         $this->loop->run();
     }
@@ -299,11 +301,11 @@ class Server
      */
     protected function registerJob(string $jobName, string $workerId) : bool
     {
-        if (!isset($this->workerJobs[$jobName])) {
-            $this->workerJobs[$jobName] = [];
+        if (!isset($this->workerJobs[$workerId])) {
+            $this->workerJobs[$workerId] = [];
         }
-        if (!in_array($workerId, $this->workerJobs[$jobName])) {
-            array_push($this->workerJobs[$jobName], $workerId);
+        if (!in_array($jobName, $this->workerJobs[$workerId])) {
+            array_push($this->workerJobs[$workerId], $jobName);
         }
         return true;
     }
@@ -438,32 +440,47 @@ class Server
             return true;
         }
 
-        // Run through job queue and and handle job requests
-        foreach (array_keys($this->jobQueues) as $jobName) {
-            // Skip queue if no jobs are queued
-            if (empty($this->jobQueues[$jobName])) {
+        // Run trough list of (idle) workers and check if there is a job in queue the worker can handle
+        foreach ($this->workerStates as $workerId => $workerState) {
+            if ($workerState !== Worker::WORKER_STATE_IDLE) {
                 continue;
             }
-            // Skip if no worker is idle and can do the job
-            $workerId = $this->getOptimalWorkerId($jobName);
-            if (empty($workerId)) {
+            $jobData = $this->getJobFromQueue($workerId);
+            if (empty($jobData)) {
                 continue;
-            }
-            // Count the jobs for each worker
-            if (!isset($this->workerStats[$workerId])) {
-                $this->workerStats[$workerId] = 0;
             }
             $this->workerStats[$workerId]++;
-
-            // Send job to worker
-            $jobData = array_shift($this->jobQueues[$jobName]);
-            $this->jobsInQueue--;
-            $this->workerJobSocket->send($jobName, \ZMQ::MODE_SNDMORE);
+            $this->workerJobSocket->send($jobData['job_name'], \ZMQ::MODE_SNDMORE);
             $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
             $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
             $this->workerJobSocket->send($jobData['payload']);
         }
+
         return true;
+    }
+
+    /**
+     * Checks if there is a job in queue which the worker (identified by id) can handle.
+     *
+     * @param string $workerId
+     * @return array Job data or empty array if no suitable job in queue.
+     */
+    protected function getJobFromQueue(string $workerId) : array
+    {
+        $workerJobs = $this->workerJobs[$workerId];
+        foreach ($workerJobs as $jobName) {
+            if (!isset($this->jobQueues[$jobName])) {
+                continue;
+            }
+            if (empty($this->jobQueues[$jobName])) {
+                continue;
+            }
+            $jobData = array_shift($this->jobQueues[$jobName]);
+            $jobData['job_name'] = $jobName;
+            $this->jobsInQueue--;
+            return $jobData;
+        }
+        return [];
     }
 
     /**
@@ -475,23 +492,6 @@ class Server
     {
         $this->jobId++;
         return dechex($this->jobId);
-    }
-
-    /**
-     * Finds an idle worker capable of completing a job of the requested type.
-     *
-     * @param string $jobName
-     * @return string A worker-id or empty string of no idle worker was found.
-     */
-    protected function getOptimalWorkerId(string $jobName) : string
-    {
-        $workerIds = $this->workerJobs[$jobName];
-        foreach ($workerIds as $workerId) {
-            if ($this->workerStates[$workerId] === Worker::WORKER_STATE_IDLE) {
-                return $workerId;
-            }
-        }
-        return '';
     }
 
     /**
