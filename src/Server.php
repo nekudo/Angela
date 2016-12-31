@@ -356,7 +356,6 @@ class Server
         $jobType = $this->jobTypes[$jobId];
         $clientAddress = $this->jobAddresses[$jobId];
         if ($jobType === 'normal') {
-            $this->clientSocket->send($result);
             $this->respondToClient($clientAddress, $result);
         }
         unset($this->jobTypes[$jobId], $this->jobAddresses[$jobId]);
