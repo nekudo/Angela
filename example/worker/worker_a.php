@@ -11,7 +11,7 @@ class WorkerA extends Worker
     public function taskA(string $payload) : string
     {
         //echo "worker " . $this->workerId . ' doing taskA with payload: ' . $payload . PHP_EOL;
-        sleep(1);
+        sleep(rand(1, 3));
 
         return $payload . '_completed_by_' . $this->workerId;
     }

@@ -13,7 +13,6 @@ use React\ChildProcess\Process;
  * @todo Add periodic timer to check for "lost jobs" in queue.
  * @todo Use logger
  * @todo Use exceptions
- * @todo Ensure client server communication is async/non-blocking
  */
 
 class Server
@@ -106,6 +105,13 @@ class Server
     protected $jobTypes = [];
 
     /**
+     * Stores client addresses for jobs to be able to reply asynchronously.
+     *
+     * @var array $jobAddresses
+     */
+    protected $jobAddresses = [];
+
+    /**
      * Simple job counter used to generate job ids.
      *
      * @var int $jobId
@@ -175,9 +181,9 @@ class Server
     {
         /** @var Context|\ZMQContext $clientContext */
         $clientContext = new Context($this->loop);
-        $this->clientSocket = $clientContext->getSocket(\ZMQ::SOCKET_REP);
+        $this->clientSocket = $clientContext->getSocket(\ZMQ::SOCKET_ROUTER);
         $this->clientSocket->bind($this->config['sockets']['client']);
-        $this->clientSocket->on('message', [$this, 'onClientMessage']);
+        $this->clientSocket->on('messages', [$this, 'onClientMessage']);
     }
 
     /**
@@ -205,20 +211,21 @@ class Server
     /**
      * Handles incoming client requests.
      *
-     * @param string $message Json-encoded data received from client.
+     * @param array $message Json-encoded data received from client.
      */
-    public function onClientMessage(string $message)
+    public function onClientMessage(array $message)
     {
-        $data = json_decode($message, true);
+        $clientAddress = $message[0];
+        $data = json_decode($message[2], true);
         switch ($data['action']) {
             case 'command':
-                $this->handleCommand($data['command']['name']);
+                $this->handleCommand($clientAddress, $data['command']['name']);
                 break;
             case 'job':
-                $this->handleJobRequest($data['job']['name'], $data['job']['workload'], false);
+                $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], false);
                 break;
             case 'background_job':
-                $this->handleJobRequest($data['job']['name'], $data['job']['workload'], true);
+                $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], true);
                 break;
             default:
                 $this->clientSocket->send('error: unknown action');
@@ -267,6 +274,20 @@ class Server
     {
         echo "worker output: " . $output . PHP_EOL;
         return true;
+    }
+
+    /**
+     * Responds to a client request.
+     *
+     * @param string $address
+     * @param string $payload
+     */
+    protected function respondToClient(string $address, string $payload = '')
+    {
+        $clientSocket = $this->clientSocket->getWrappedSocket();
+        $clientSocket->send($address, \ZMQ::MODE_SNDMORE);
+        $clientSocket->send('', \ZMQ::MODE_SNDMORE);
+        $clientSocket->send($payload);
     }
 
     /**
@@ -333,45 +354,54 @@ class Server
     protected function onJobCompleted(string $jobId, string $result = '')
     {
         $jobType = $this->jobTypes[$jobId];
+        $clientAddress = $this->jobAddresses[$jobId];
         if ($jobType === 'normal') {
             $this->clientSocket->send($result);
+            $this->respondToClient($clientAddress, $result);
         }
-        unset($this->jobTypes[$jobId]);
+        unset($this->jobTypes[$jobId], $this->jobAddresses[$jobId]);
     }
 
     /**
      * Executes commands received from a client.
      *
+     * @param string $clientAddress
      * @param string $command
      * @return bool
      */
-    protected function handleCommand(string $command) : bool
+    protected function handleCommand(string $clientAddress, string $command) : bool
     {
         switch ($command) {
             case 'stop':
                 $this->loop->stop();
-                $this->clientSocket->send('ok');
+                $this->respondToClient($clientAddress, 'ok');
                 return true;
         }
-        $this->clientSocket->send('error');
+        $this->respondToClient($clientAddress, 'error');
         return false;
     }
 
     /**
      * Handles job-requests received from a client.
      *
+     * @param string $clientAddress
      * @param string $jobName
      * @param string $payload
      * @param bool $backgroundJob
      * @return string The id assigned to the job.
      */
-    protected function handleJobRequest(string $jobName, string $payload = '', bool $backgroundJob = false) : string
-    {
+    protected function handleJobRequest(
+        string $clientAddress,
+        string $jobName,
+        string $payload = '',
+        bool $backgroundJob = false
+    ) : string {
         $jobId = $this->addJobToQueue($jobName, $payload);
         $this->jobTypes[$jobId] = ($backgroundJob === true) ? 'background' : 'normal';
+        $this->jobAddresses[$jobId] = $clientAddress;
         $this->pushJobs();
         if ($backgroundJob === true) {
-            $this->clientSocket->send($jobId);
+            $this->respondToClient($clientAddress, $jobId);
         }
         return $jobId;
     }
