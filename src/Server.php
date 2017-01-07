@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace Nekudo\Angela;
 
+use Nekudo\Angela\Exception\ServerException;
 use Nekudo\Angela\Logger\LoggerFactory;
 use Overnil\EventLoop\Factory as EventLoopFactory;
 use Psr\Log\LoggerInterface;
@@ -11,8 +12,6 @@ use React\ChildProcess\Process;
 /**
  * @todo Add periodic timer to check for "lost jobs" in queue.
  * @todo Add periodic timer to check worker process "health".
- * @todo Use logger
- * @todo Use exceptions
  */
 
 class Server
@@ -146,11 +145,16 @@ class Server
      */
     public function start()
     {
-        $this->createClientSocket();
-        $this->createWorkerJobSocket();
-        $this->createWorkerReplySocket();
-        $this->startWorkerPools();
-        $this->loop->run();
+        try {
+            $this->createClientSocket();
+            $this->createWorkerJobSocket();
+            $this->createWorkerReplySocket();
+            $this->startWorkerPools();
+            $this->loop->run();
+        } catch (ServerException $e) {
+            $errorMsgPattern = 'Server error: %s (%s:%d)';
+            $this->logger->emergency(sprintf($errorMsgPattern, $e->getMessage(), $e->getFile(), $e->getLine()));
+        }
     }
 
     /**
@@ -206,21 +210,29 @@ class Server
      */
     public function onClientMessage(array $message)
     {
-        $clientAddress = $message[0];
-        $data = json_decode($message[2], true);
-        switch ($data['action']) {
-            case 'command':
-                $this->handleCommand($clientAddress, $data['command']['name']);
-                break;
-            case 'job':
-                $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], false);
-                break;
-            case 'background_job':
-                $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], true);
-                break;
-            default:
-                $this->clientSocket->send('error: unknown action');
-                break;
+        try {
+            $clientAddress = $message[0];
+            $data = json_decode($message[2], true);
+            if (empty($clientAddress) || empty($data) || !isset($data['action'])) {
+                throw new ServerException('Received malformed client message.');
+            }
+            switch ($data['action']) {
+                case 'command':
+                    $this->handleCommand($clientAddress, $data['command']['name']);
+                    break;
+                case 'job':
+                    $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], false);
+                    break;
+                case 'background_job':
+                    $this->handleJobRequest($clientAddress, $data['job']['name'], $data['job']['workload'], true);
+                    break;
+                default:
+                    $this->clientSocket->send('error: unknown action');
+                    throw new ServerException('Received request for invalid action.');
+            }
+        } catch (ServerException $e) {
+            $errorMsgPattern = 'Client message error: %s (%s:%d)';
+            $this->logger->error(sprintf($errorMsgPattern, $e->getMessage(), $e->getFile(), $e->getLine()));
         }
     }
 
@@ -228,43 +240,46 @@ class Server
      * Handles incoming worker requests.
      *
      * @param string $message Json-encoded data received from worker.
+     * @throws ServerException
      */
     public function onWorkerReplyMessage(string $message)
     {
-        $data = json_decode($message, true);
-        if (!isset($data['request'])) {
-            throw new \RuntimeException('Invalid worker request received.');
+        try {
+            $data = json_decode($message, true);
+            if (empty($data) || !isset($data['request'])) {
+                throw new ServerException('Invalid worker request received.');
+            }
+            $result = null;
+            switch ($data['request']) {
+                case 'register_job':
+                    $result = $this->registerJob($data['job_name'], $data['worker_id']);
+                    break;
+                case 'unregister_job':
+                    $result = $this->unregisterJob($data['job_name'], $data['worker_id']);
+                    break;
+                case 'change_state':
+                    $result = $this->changeWorkerState($data['worker_id'], $data['state']);
+                    break;
+                case 'job_completed':
+                    $this->onJobCompleted($data['job_id'], $data['result']);
+                    break;
+            }
+            $response = ($result === true) ? 'ok' : 'error';
+            $this->workerReplySocket->send($response);
+        } catch (ServerException $e) {
+            $errorMsgPattern = 'Worker message error: %s (%s:%d)';
+            $this->logger->error(sprintf($errorMsgPattern, $e->getMessage(), $e->getFile(), $e->getLine()));
         }
-        $result = null;
-        switch ($data['request']) {
-            case 'register_job':
-                $result = $this->registerJob($data['job_name'], $data['worker_id']);
-                break;
-            case 'unregister_job':
-                $result = $this->unregisterJob($data['job_name'], $data['worker_id']);
-                break;
-            case 'change_state':
-                $result = $this->changeWorkerState($data['worker_id'], $data['state']);
-                break;
-            case 'job_completed':
-                $this->onJobCompleted($data['job_id'], $data['result']);
-                break;
-        }
-        $response = ($result === true) ? 'ok' : 'error';
-        $this->workerReplySocket->send($response);
     }
 
     /**
      * Handles data received from child processes.
      *
-     * @todo Log these messages. By default workers should be silent.
      * @param string $output
-     * @return bool
      */
-    public function onChildProcessOut(string $output) : bool
+    public function onChildProcessOut(string $output)
     {
-        echo "worker output: " . $output . PHP_EOL;
-        return true;
+        $this->logger->warning('Unexpected worker output: ' . $output);
     }
 
     /**
@@ -275,10 +290,14 @@ class Server
      */
     protected function respondToClient(string $address, string $payload = '')
     {
-        $clientSocket = $this->clientSocket->getWrappedSocket();
-        $clientSocket->send($address, \ZMQ::MODE_SNDMORE);
-        $clientSocket->send('', \ZMQ::MODE_SNDMORE);
-        $clientSocket->send($payload);
+        try {
+            $clientSocket = $this->clientSocket->getWrappedSocket();
+            $clientSocket->send($address, \ZMQ::MODE_SNDMORE);
+            $clientSocket->send('', \ZMQ::MODE_SNDMORE);
+            $clientSocket->send($payload);
+        } catch (\ZMQException $e) {
+            $this->logger->error('Error respoding to client: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -357,6 +376,7 @@ class Server
      *
      * @param string $clientAddress
      * @param string $command
+     * @throws ServerException
      * @return bool
      */
     protected function handleCommand(string $clientAddress, string $command) : bool
@@ -374,7 +394,7 @@ class Server
                 return true;
         }
         $this->respondToClient($clientAddress, 'error');
-        return false;
+        throw new ServerException('Received unknown command.');
     }
 
     /**
@@ -444,11 +464,15 @@ class Server
             if (empty($jobData)) {
                 continue;
             }
-            $this->workerStats[$workerId]++;
-            $this->workerJobSocket->send($jobData['job_name'], \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
-            $this->workerJobSocket->send($jobData['payload']);
+            try {
+                $this->workerStats[$workerId]++;
+                $this->workerJobSocket->send($jobData['job_name'], \ZMQ::MODE_SNDMORE);
+                $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
+                $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
+                $this->workerJobSocket->send($jobData['payload']);
+            } catch (\ZMQException $e) {
+                $this->logger->error('Error sending job to worker: ' . $e->getMessage());
+            }
         }
 
         return true;
@@ -493,11 +517,12 @@ class Server
      * Starts all worker pools defined in configuration.
      *
      * @return bool
+     * @throws ServerException
      */
     protected function startWorkerPools() : bool
     {
         if (empty($this->config['pool'])) {
-            throw new \RuntimeException('No worker pool defined. Check config file.');
+            throw new ServerException('No worker pool defined. Check config file.');
         }
         foreach ($this->config['pool'] as $poolName => $poolConfig) {
             $this->startWorkerPool($poolName, $poolConfig);
@@ -510,11 +535,12 @@ class Server
      *
      * @param string $poolName
      * @param array $poolConfig
+     * @throws ServerException
      */
     protected function startWorkerPool(string $poolName, array $poolConfig)
     {
         if (!isset($poolConfig['worker_file'])) {
-            throw new \RuntimeException('Path to worker file not set in pool config.');
+            throw new ServerException('Path to worker file not set in pool config.');
         }
 
         $this->processes[$poolName] = [];
@@ -529,7 +555,7 @@ class Server
                 $this->workerStates[$workerId] = Worker::WORKER_STATE_IDLE;
                 $this->workerStats[$workerId] = 0;
             } catch (\Exception $e) {
-                // @todo Add error handling
+                throw new ServerException('Could not start child process.');
             }
         }
     }
