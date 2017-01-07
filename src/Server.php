@@ -9,11 +9,6 @@ use Psr\Log\LoggerInterface;
 use React\ZMQ\Context;
 use React\ChildProcess\Process;
 
-/**
- * @todo Add periodic timer to check for "lost jobs" in queue.
- * @todo Add periodic timer to check worker process "health".
- */
-
 class Server
 {
     /**
@@ -150,6 +145,8 @@ class Server
             $this->createWorkerJobSocket();
             $this->createWorkerReplySocket();
             $this->startWorkerPools();
+            $this->loop->addPeriodicTimer(5, [$this, 'monitorChildProcesses']);
+            $this->loop->addPeriodicTimer(3, [$this, 'monitorQueue']);
             $this->loop->run();
         } catch (ServerException $e) {
             $errorMsgPattern = 'Server error: %s (%s:%d)';
@@ -280,6 +277,18 @@ class Server
     public function onChildProcessOut(string $output)
     {
         $this->logger->warning('Unexpected worker output: ' . $output);
+    }
+
+    /**
+     * Handles "exit" signals of child processes.
+     *
+     * @param int $exitCode
+     * @param int $termSignal
+     */
+    public function onChildProcessExit($exitCode, $termSignal)
+    {
+        $this->logger->error(sprintf('Child process exited. (Code: %d, Signal: %d)', $exitCode, $termSignal));
+        $this->monitorChildProcesses();
     }
 
     /**
@@ -549,11 +558,7 @@ class Server
             // start child process:
             try {
                 $process = $this->startChildProcess($poolConfig['worker_file']);
-                array_push($this->processes[$poolName], $process);
-                $workerPid = $process->getPid();
-                $workerId = $this->config['server_id'] . '_' . $workerPid;
-                $this->workerStates[$workerId] = Worker::WORKER_STATE_IDLE;
-                $this->workerStats[$workerId] = 0;
+                $this->registerChildProcess($process, $poolName);
             } catch (\Exception $e) {
                 throw new ServerException('Could not start child process.');
             }
@@ -592,6 +597,64 @@ class Server
             $process->terminate();
         }
         return true;
+    }
+
+    /**
+     * Checks if child processes are alive or need to be restarted.
+     */
+    public function monitorChildProcesses()
+    {
+        foreach (array_keys($this->processes) as $poolName) {
+            $this->monitorPoolProcesses($poolName);
+        }
+    }
+
+    /**
+     * Checks state of every process in pool and restarts processes if necessary.
+     *
+     * @param string $poolName
+     * @return bool
+     */
+    protected function monitorPoolProcesses(string $poolName) : bool
+    {
+        if (empty($this->processes[$poolName])) {
+            return true;
+        }
+        /** @var Process $process */
+        foreach ($this->processes[$poolName] as $i => $process) {
+            $pid = $process->getPid();
+            $workerId = $this->config['server_id'] . '_' . $pid;
+
+            // check if process is still running:
+            if ($process->isRunning() === true) {
+                continue;
+            }
+
+            // if process is not running remove it from system:
+            $this->unregisterChildProcess($workerId);
+            unset($this->processes[$poolName][$i]);
+
+            // fire up a new process:
+            $workerFile = $this->config['pool'][$poolName]['worker_file'];
+            $process = $this->startChildProcess($workerFile);
+            $this->registerChildProcess($process, $poolName);
+        }
+        return true;
+    }
+
+    /**
+     * Cleanup jobs that are not handled correctly for some reason.
+     *
+     * @todo Find neat way to handle jobs lost in space and client waiting for response if a worker dies.
+     *
+     * @return bool
+     */
+    public function monitorQueue() : bool
+    {
+        if ($this->jobsInQueue === 0) {
+            return true;
+        }
+        return $this->pushJobs();
     }
 
     /**
@@ -643,6 +706,36 @@ class Server
             $this->onChildProcessOut($output);
         });
 
+        $process->on('exit', function ($exitCode, $termSignal) {
+            $this->onChildProcessExit($exitCode, $termSignal);
+        });
+
         return $process;
+    }
+
+    protected function registerChildProcess(Process $process, string $poolName) : bool
+    {
+        array_push($this->processes[$poolName], $process);
+        $workerPid = $process->getPid();
+        $workerId = $this->config['server_id'] . '_' . $workerPid;
+        $this->workerStates[$workerId] = Worker::WORKER_STATE_IDLE;
+        $this->workerStats[$workerId] = 0;
+        return true;
+    }
+
+    /**
+     * Removes all references to a worker/child-process.
+     *
+     * @param string $workerId
+     * @return bool
+     */
+    protected function unregisterChildProcess(string $workerId) : bool
+    {
+        unset(
+            $this->workerStates[$workerId],
+            $this->workerJobs[$workerId],
+            $this->workerStats[$workerId]
+        );
+        return true;
     }
 }
