@@ -4,8 +4,8 @@ return [
     // Unique identifier for each server:
     'server_id' => 's1',
 
-    // Path to your angela script:
-    'script_path' => __DIR__ . '/angela.php',
+    // Path to your server script:
+    'server_path' => __DIR__ . '/server.php',
 
     // Path to configuration file (required to pass to worker processes)
     'config_path' => __FILE__,
@@ -36,13 +36,13 @@ return [
     'pool' => [
 
         // Unique name/identifier for each pool:
-        'pool_c' => [
+        'pool_a' => [
 
             // Path to the worker file:
             'worker_file' => __DIR__ . '/worker/worker_a.php',
 
             // Number of child processes created on startup:
-            'cp_start' => 5,
+            'cp_start' => 3,
         ],
 
         /*

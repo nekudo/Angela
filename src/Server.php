@@ -9,8 +9,8 @@ use React\ZMQ\Context;
 use React\ChildProcess\Process;
 
 /**
- * @todo Add getStats command.
  * @todo Add periodic timer to check for "lost jobs" in queue.
+ * @todo Add periodic timer to check worker process "health".
  * @todo Use logger
  * @todo Use exceptions
  */
@@ -150,17 +150,6 @@ class Server
         $this->createWorkerJobSocket();
         $this->createWorkerReplySocket();
         $this->startWorkerPools();
-
-        /*
-        $this->loop->addPeriodicTimer(5, function () {
-            echo 'Worker Status: ' . PHP_EOL;
-            print_r($this->workerStates);
-            echo 'Worker Stats: ' . PHP_EOL;
-            print_r($this->workerStats);
-            echo 'Jobs in queue: '  . $this->jobsInQueue . PHP_EOL;
-        });
-        */
-
         $this->loop->run();
     }
 
@@ -170,9 +159,9 @@ class Server
     public function stop()
     {
         $this->stopWorkerPools();
-        $this->clientSocket->close();
         $this->workerJobSocket->disconnect($this->config['sockets']['worker_job']);
         $this->workerReplySocket->close();
+        $this->clientSocket->close();
         $this->loop->stop();
     }
 
@@ -374,8 +363,14 @@ class Server
     {
         switch ($command) {
             case 'stop':
-                $this->loop->stop();
                 $this->respondToClient($clientAddress, 'ok');
+                $this->stop();
+                return true;
+            case 'status':
+                $statusData = $this->getStatusData();
+                $this->respondToClient($clientAddress, json_encode($statusData));
+                return true;
+            case 'reload':
                 return true;
         }
         $this->respondToClient($clientAddress, 'error');
@@ -532,6 +527,7 @@ class Server
                 $workerPid = $process->getPid();
                 $workerId = $this->config['server_id'] . '_' . $workerPid;
                 $this->workerStates[$workerId] = Worker::WORKER_STATE_IDLE;
+                $this->workerStats[$workerId] = 0;
             } catch (\Exception $e) {
                 // @todo Add error handling
             }
@@ -570,6 +566,34 @@ class Server
             $process->terminate();
         }
         return true;
+    }
+
+    /**
+     * Collects server and worker status information to send back to client.
+     *
+     * @return array
+     */
+    protected function getStatusData() : array
+    {
+        $statusData = [
+            'active_worker' => [],
+            'job_info' => [],
+        ];
+        foreach (array_keys($this->processes) as $poolName) {
+            if (!isset($statusData['active_worker'][$poolName])) {
+                $statusData['active_worker'][$poolName] = 0;
+            }
+            /** @var Process $process */
+            foreach ($this->processes[$poolName] as $process) {
+                $processIsRunning = $process->isRunning();
+                if ($processIsRunning === true) {
+                    $statusData['active_worker'][$poolName]++;
+                }
+            }
+        }
+        $statusData['job_info']['queue_length'] = $this->jobsInQueue;
+        $statusData['job_info']['worker_stats'] = $this->workerStats;
+        return $statusData;
     }
 
     /**

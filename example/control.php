@@ -1,9 +1,36 @@
 <?php
+if (empty($argv)) {
+    exit('Script can only be run in cli mode.' . PHP_EOL);
+}
+if (empty($argv[1])) {
+    exit('No action given. Valid actions are: start|stop|restart|status' . PHP_EOL);
+}
 
-$context = new ZMQContext;
-$socket = $context->getSocket(ZMQ::SOCKET_REQ);
-$socket->connect('tcp://127.0.0.1:5551');
-$socket->send('stop');
-$response = $socket->recv();
-$socket->disconnect('tcp://127.0.0.1:5551');
-var_dump($response);
+try {
+    require_once __DIR__ . '/../vendor/autoload.php';
+    $config = include __DIR__ . '/config.php';
+    $angelaControl = new \Nekudo\Angela\AngelaControl($config);
+    $action = $argv[1];
+    switch ($action) {
+        case 'start':
+            $pid = $angelaControl->start();
+            echo sprintf("Angela successfully started. (Pid: %d)", $pid) . PHP_EOL;
+            break;
+        case 'stop':
+            $angelaControl->stop();
+            echo "Angela successfully stoppped." .PHP_EOL;
+            break;
+        case 'restart':
+            $pid = $angelaControl->restart();
+            echo sprintf("Angela successfully restarted. (Pid: %d)", $pid) . PHP_EOL;
+            break;
+        case 'status':
+            $response = $angelaControl->status();
+            print_r($response);
+            break;
+        default:
+            exit('Invalid action. Valid actions are: start|stop|restart|status|kill' . PHP_EOL);
+    }
+} catch (Exception $e) {
+    echo 'Error: ' . $e->getMessage() . PHP_EOL;
+}
