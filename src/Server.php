@@ -66,9 +66,9 @@ class Server
     /**
      * Holds information on which worker can do which kind of jobs.
      *
-     * @var array $workerJobs
+     * @var array $workerJobCapabilities
      */
-    protected $workerJobs = [];
+    protected $workerJobCapabilities = [];
 
     /**
      * Holds worker statistics.
@@ -104,6 +104,13 @@ class Server
      * @var array $jobAddresses
      */
     protected $jobAddresses = [];
+
+    /**
+     * Holds information on which worker is doing which job-id.
+     *
+     * @var array
+     */
+    protected $workerJobMap = [];
 
     /**
      * Simple job counter used to generate job ids.
@@ -258,7 +265,7 @@ class Server
                     $result = $this->changeWorkerState($data['worker_id'], $data['state']);
                     break;
                 case 'job_completed':
-                    $this->onJobCompleted($data['job_id'], $data['result']);
+                    $this->onJobCompleted($data['worker_id'], $data['job_id'], $data['result']);
                     break;
             }
             $response = ($result === true) ? 'ok' : 'error';
@@ -318,11 +325,11 @@ class Server
      */
     protected function registerJob(string $jobName, string $workerId) : bool
     {
-        if (!isset($this->workerJobs[$workerId])) {
-            $this->workerJobs[$workerId] = [];
+        if (!isset($this->workerJobCapabilities[$workerId])) {
+            $this->workerJobCapabilities[$workerId] = [];
         }
-        if (!in_array($jobName, $this->workerJobs[$workerId])) {
-            array_push($this->workerJobs[$workerId], $jobName);
+        if (!in_array($jobName, $this->workerJobCapabilities[$workerId])) {
+            array_push($this->workerJobCapabilities[$workerId], $jobName);
         }
         return true;
     }
@@ -336,14 +343,14 @@ class Server
      */
     protected function unregisterJob(string $jobName, string $workerId) : bool
     {
-        if (!isset($this->workerJobs[$jobName])) {
+        if (!isset($this->workerJobCapabilities[$jobName])) {
             return true;
         }
-        if (($key = array_search($workerId, $this->workerJobs[$jobName])) !== false) {
-            unset($this->workerJobs[$jobName][$key]);
+        if (($key = array_search($workerId, $this->workerJobCapabilities[$jobName])) !== false) {
+            unset($this->workerJobCapabilities[$jobName][$key]);
         }
-        if (empty($this->workerJobs[$jobName])) {
-            unset($this->workerJobs[$jobName]);
+        if (empty($this->workerJobCapabilities[$jobName])) {
+            unset($this->workerJobCapabilities[$jobName]);
         }
         return true;
     }
@@ -367,17 +374,22 @@ class Server
     /**
      * Handles a completed job. Sends results back to client if it was not a background job.
      *
+     * @param string $workerId
      * @param string $jobId
      * @param string $result
      */
-    protected function onJobCompleted(string $jobId, string $result = '')
+    protected function onJobCompleted(string $workerId, string $jobId, string $result = '')
     {
         $jobType = $this->jobTypes[$jobId];
         $clientAddress = $this->jobAddresses[$jobId];
         if ($jobType === 'normal') {
             $this->respondToClient($clientAddress, $result);
         }
-        unset($this->jobTypes[$jobId], $this->jobAddresses[$jobId]);
+        unset(
+            $this->jobTypes[$jobId],
+            $this->jobAddresses[$jobId],
+            $this->workerJobMap[$workerId]
+        );
     }
 
     /**
@@ -475,6 +487,7 @@ class Server
             }
             try {
                 $this->workerStats[$workerId]++;
+                $this->workerJobMap[$workerId] = $jobData['job_id'];
                 $this->workerJobSocket->send($jobData['job_name'], \ZMQ::MODE_SNDMORE);
                 $this->workerJobSocket->send($jobData['job_id'], \ZMQ::MODE_SNDMORE);
                 $this->workerJobSocket->send($workerId, \ZMQ::MODE_SNDMORE);
@@ -495,8 +508,8 @@ class Server
      */
     protected function getJobFromQueue(string $workerId) : array
     {
-        $workerJobs = $this->workerJobs[$workerId];
-        foreach ($workerJobs as $jobName) {
+        $workerJobCapabilities = $this->workerJobCapabilities[$workerId];
+        foreach ($workerJobCapabilities as $jobName) {
             if (!isset($this->jobQueues[$jobName])) {
                 continue;
             }
@@ -645,8 +658,6 @@ class Server
     /**
      * Cleanup jobs that are not handled correctly for some reason.
      *
-     * @todo Find neat way to handle jobs lost in space and client waiting for response if a worker dies.
-     *
      * @return bool
      */
     public function monitorQueue() : bool
@@ -731,10 +742,22 @@ class Server
      */
     protected function unregisterChildProcess(string $workerId) : bool
     {
+        // check if there is a client waiting for reply
+        if (isset($this->workerJobMap[$workerId])) {
+            $jobId = $this->workerJobMap[$workerId];
+            $jobType = $this->jobTypes[$jobId];
+            $clientAddress = $this->jobAddresses[$jobId];
+            if ($jobType === 'normal') {
+                $this->respondToClient($clientAddress, 'internal error');
+            }
+        }
+
+        // unset references
         unset(
             $this->workerStates[$workerId],
-            $this->workerJobs[$workerId],
-            $this->workerStats[$workerId]
+            $this->workerJobCapabilities[$workerId],
+            $this->workerStats[$workerId],
+            $this->workerJobMap[$workerId]
         );
         return true;
     }
