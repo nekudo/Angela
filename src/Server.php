@@ -153,7 +153,7 @@ class Server
             $this->createWorkerReplySocket();
             $this->startWorkerPools();
             $this->loop->addPeriodicTimer(5, [$this, 'monitorChildProcesses']);
-            $this->loop->addPeriodicTimer(3, [$this, 'monitorQueue']);
+            $this->loop->addPeriodicTimer(10, [$this, 'monitorQueue']);
             $this->loop->run();
         } catch (ServerException $e) {
             $errorMsgPattern = 'Server error: %s (%s:%d)';
@@ -411,8 +411,6 @@ class Server
                 $statusData = $this->getStatusData();
                 $this->respondToClient($clientAddress, json_encode($statusData));
                 return true;
-            case 'reload':
-                return true;
         }
         $this->respondToClient($clientAddress, 'error');
         throw new ServerException('Received unknown command.');
@@ -665,7 +663,32 @@ class Server
         if ($this->jobsInQueue === 0) {
             return true;
         }
+        foreach (array_keys($this->jobQueues) as $jobName) {
+            if (empty($this->jobQueues[$jobName])) {
+                continue;
+            }
+            if ($this->jobCanBeProcessed($jobName)) {
+                continue;
+            }
+            $this->jobQueues[$jobName] = [];
+        }
         return $this->pushJobs();
+    }
+
+    /**
+     * Check if there is a least one worker capable of doing requested job type.
+     *
+     * @param string $jobName
+     * @return bool
+     */
+    protected function jobCanBeProcessed(string $jobName) : bool
+    {
+        foreach ($this->workerJobCapabilities as $workerId => $jobs) {
+            if (in_array($jobName, $jobs)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -724,6 +747,13 @@ class Server
         return $process;
     }
 
+    /**
+     * Registers new child-process at server.
+     *
+     * @param Process $process
+     * @param string $poolName
+     * @return bool
+     */
     protected function registerChildProcess(Process $process, string $poolName) : bool
     {
         array_push($this->processes[$poolName], $process);
