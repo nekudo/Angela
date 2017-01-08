@@ -1,7 +1,16 @@
 {
     "name": "nekudo/angela",
-    "description": "Simple framework to manage gearman workers in your PHP application.",
-    "keywords": ["framework", "gearman", "worker", "manager", "microservices"],
+    "description": "PHP worker/microservice framework based on ZeroMQ.",
+    "keywords": [
+        "framework",
+        "worker",
+        "manager",
+        "microservices",
+        "zeromq",
+        "zmq",
+        "asynchronous",
+        "async"
+    ],
     "homepage": "https://github.com/nekudo/Angela",
     "authors": [
         {
@@ -12,10 +21,14 @@
     ],
     "require": {
         "php": ">=7.0.0",
+        "ext-zmq": "*",
         "react/child-process": "^0.4.0",
         "katzgrau/klogger": "^1.2.1",
         "overnil/event-loop": "v0.0.3",
         "react/zmq": "v0.3.0"
+    },
+    "suggest": {
+        "ext-ev": "~1.0"
     },
     "autoload": {
         "psr-4": {

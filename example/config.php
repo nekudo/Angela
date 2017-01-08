@@ -1,7 +1,7 @@
 <?php
 
 return [
-    // Unique identifier for each server:
+    // Unique identifier for each server/instance:
     'server_id' => 's1',
 
     // Path to your server script:
@@ -24,11 +24,13 @@ return [
     ],
 
     'sockets' => [
-        // Command/Control socket for server:
+        // Command/Control socket (Use to send commands/jobs from client to server):
         'client' => 'tcp://127.0.0.1:5551',
 
+        // Job socket (Used to push jobs from sever to workers);
         'worker_job' => 'ipc://worker_jobs.ipc',
 
+        // Reply socket (Used to reply from worker to server):
         'worker_reply' => 'ipc://worker_reply.ipc',
     ],
 
@@ -45,7 +47,7 @@ return [
             'cp_start' => 3,
         ],
 
-        /*
+        /* add as many pools as you like ...
         'pool_b' => [
             'worker_file' => __DIR__ . '/worker/worker_b.php',
             'cp_start' => 2,
