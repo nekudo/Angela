@@ -2,8 +2,10 @@
 declare(strict_types=1);
 namespace Nekudo\Angela;
 
+use Nekudo\Angela\Exception\WorkerException;
+use Nekudo\Angela\Logger\LoggerFactory;
 use Overnil\EventLoop\Factory as EventLoopFactory;
-use React\Stream\Stream;
+use Psr\Log\LoggerInterface;
 use React\ZMQ\Context;
 
 abstract class Worker
@@ -20,16 +22,14 @@ abstract class Worker
     protected $config = [];
 
     /**
+     * @var LoggerInterface $logger
+     */
+    protected $logger;
+
+    /**
      * @var \React\EventLoop\LoopInterface $loop
      */
     protected $loop;
-
-    /**
-     * Input stream to receive control commands from server.
-     *
-     * @var Stream $readStream
-     */
-    protected $readStream;
 
     /**
      * Socket to received job requests.
@@ -76,12 +76,28 @@ abstract class Worker
         // create workers main event loop:
         $this->loop = EventLoopFactory::create();
 
+        // load configuration
         $this->loadConfig();
+
+        // create logger
+        $loggerFactory = new LoggerFactory($this->config['logger']);
+        $logger = $loggerFactory->create();
+        $this->setLogger($logger);
+
         $this->setWorkerId();
-        $this->createInputStream();
         $this->createJobSocket();
         $this->createReplySocket();
         $this->setState(Worker::WORKER_STATE_IDLE);
+    }
+
+    /**
+     * Injects logger
+     *
+     * @param LoggerInterface $logger
+     */
+    public function setLogger(LoggerInterface $logger)
+    {
+        $this->logger = $logger;
     }
 
     /**
@@ -107,20 +123,6 @@ abstract class Worker
     }
 
     /**
-     * Creates a stream to receive control commands from server and registers corresponding callbacks.
-     */
-    protected function createInputStream()
-    {
-        // creates input stream for worker:
-        $this->readStream = new Stream(STDIN, $this->loop);
-
-        // listen to commands on input stream:
-        $this->readStream->on('data', function ($data) {
-            $this->onCommand($data);
-        });
-    }
-
-    /**
      * Creates socket to receive jobs from server and registers corresponding callbacks.
      */
     protected function createJobSocket()
@@ -143,20 +145,9 @@ abstract class Worker
     }
 
     /**
-     * Handles commands the worker receives from server.
-     *
-     * @todo Implement command handling
-     * @param string $input
-     * @return bool
-     */
-    public function onCommand(string $input) : bool
-    {
-        return true;
-    }
-
-    /**
      * Handles job requests received from server.
      *
+     * @throws WorkerException
      * @param array $message
      * @return bool
      */
@@ -174,7 +165,7 @@ abstract class Worker
 
         // Skip if worker can not handle the requested job
         if (!isset($this->callbacks[$jobName])) {
-            throw new \RuntimeException('No callback found for requested job.');
+            throw new WorkerException('No callback found for requested job.');
         }
 
         // Switch to busy state handle job and switch back to idle state:
@@ -227,16 +218,18 @@ abstract class Worker
 
     /**
      * Loads configuration from config file passed in via argument.
+     *
+     * @throws WorkerException
      */
     protected function loadConfig()
     {
         $options = getopt('c:');
         if (!isset($options['c'])) {
-            throw new \RuntimeException('No path to configuration provided.');
+            throw new WorkerException('No path to configuration provided.');
         }
         $pathToConfig = $options['c'];
         if (!file_exists($pathToConfig)) {
-            throw new \RuntimeException('Config file not found.');
+            throw new WorkerException('Config file not found.');
         }
         $this->config = require $pathToConfig;
     }
@@ -255,6 +248,10 @@ abstract class Worker
      */
     public function run()
     {
-        $this->loop->run();
+        try {
+            $this->loop->run();
+        } catch (WorkerException $e) {
+            $this->logger->error('Worker Error: ' . $e->getMessage());
+        }
     }
 }
