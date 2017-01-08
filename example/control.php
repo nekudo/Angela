@@ -3,7 +3,7 @@ if (empty($argv)) {
     exit('Script can only be run in cli mode.' . PHP_EOL);
 }
 if (empty($argv[1])) {
-    exit('No action given. Valid actions are: start|stop|restart|status' . PHP_EOL);
+    exit('No action given. Valid actions are: start|stop|restart|status|flush-queue|kill' . PHP_EOL);
 }
 
 try {
@@ -20,6 +20,10 @@ try {
             $angelaControl->stop();
             echo "Angela successfully stoppped." .PHP_EOL;
             break;
+        case 'kill':
+            $result = $angelaControl->kill();
+            echo 'All processes killed.' . PHP_EOL;
+            break;
         case 'restart':
             $pid = $angelaControl->restart();
             echo sprintf("Angela successfully restarted. (Pid: %d)", $pid) . PHP_EOL;
@@ -29,16 +33,12 @@ try {
             print_r($response);
             break;
         case 'flush-queue':
-            $response = $angelaControl->flushQueue();
-            if ($response === true) {
-                echo 'Queue flushed.' . PHP_EOL;
-            } else {
-                echo 'Error flushing queue.' . PHP_EOL;
-            }
+            $angelaControl->flushQueue();
+            echo 'Queue flushed.' . PHP_EOL;
             break;
         default:
-            exit('Invalid action. Valid actions are: start|stop|restart|status' . PHP_EOL);
+            exit('Invalid action. Valid actions are: start|stop|restart|status|flush-queue|kill' . PHP_EOL);
     }
-} catch (Exception $e) {
+} catch (\Nekudo\Angela\Exception\ControlException $e) {
     echo 'Error: ' . $e->getMessage() . PHP_EOL;
 }

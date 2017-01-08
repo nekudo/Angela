@@ -1,10 +1,9 @@
 <?php namespace Nekudo\Angela;
 
+use Nekudo\Angela\Exception\ControlException;
+
 class AngelaControl
 {
-    // @todo Implement "force kill"
-    // @todo Implement "clear queue"
-
     /**
      * @var array $config
      */
@@ -18,14 +17,14 @@ class AngelaControl
     /**
      * Starts Server instance as a background process.
      *
+     * @throws ControlException
      * @return int Process id (0 if script could not be started).
      */
     public function start() : int
     {
-
         $pathToServerScript = $this->config['server_path'];
         if (!file_exists($pathToServerScript)) {
-            throw new \RuntimeException('Server script not found. Check server_path in your config file.');
+            throw new ControlException('Server script not found. Check server_path in your config file.');
         }
 
         // check if process is already running:
@@ -42,7 +41,7 @@ class AngelaControl
         // return process id:
         $pid = $this->getServerPid();
         if (empty($pid)) {
-            throw new \RuntimeException('Could not start server. (Empty Pid)');
+            throw new ControlException('Could not start server. (Empty Pid)');
         }
         return $pid;
     }
@@ -50,6 +49,7 @@ class AngelaControl
     /**
      * Sends "shutdown" command to Angela instance.
      *
+     * @throws ControlException
      * @return bool
      */
     public function stop() : bool
@@ -60,7 +60,7 @@ class AngelaControl
         }
         $response = $this->sendCommand('stop');
         if ($response !== 'ok') {
-            throw new \RuntimeException('Shutdown failed.');
+            throw new ControlException('Shutdown failed.');
         }
         return true;
     }
@@ -68,6 +68,7 @@ class AngelaControl
     /**
      * Restarts Angela processes.
      *
+     * @throws ControlException
      * @return int Pid of new server process.
      */
     public function restart() : int
@@ -78,7 +79,7 @@ class AngelaControl
         }
         $stopped = $this->stop();
         if ($stopped !== true) {
-            throw new \RuntimeException('Error while stopping current Angela process.');
+            throw new ControlException('Error while stopping current Angela process.');
         }
         return $this->start();
     }
@@ -86,44 +87,93 @@ class AngelaControl
     /**
      * Checks worker status of Angela instance.
      *
+     * @throws ControlException
      * @return array
      */
     public function status() : array
     {
         $serverPid = $this->getServerPid();
         if (empty($serverPid)) {
-            throw new \RuntimeException('Angela not currently running.');
+            throw new ControlException('Angela not currently running.');
         }
         $response = $this->sendCommand('status');
         if (empty($response)) {
-            throw new \RuntimeException('Error fetching status. (Incorrect response)');
+            throw new ControlException('Error fetching status. (Incorrect response)');
         }
         return json_decode($response, true);
     }
 
+    /**
+     * Flushes all job queue in server instance.
+     *
+     * @throws ControlException
+     * @return bool
+     */
     public function flushQueue() : bool
     {
         $serverPid = $this->getServerPid();
         if (empty($serverPid)) {
-            throw new \RuntimeException('Angela not currently running.');
+            throw new ControlException('Angela not currently running.');
         }
         $response = $this->sendCommand('flush_queue');
         if ($response !== 'ok') {
-            throw new \RuntimeException('Error flushing queue. (Incorrect response)');
+            throw new ControlException('Error flushing queue. (Incorrect response)');
         }
         return true;
     }
 
     /**
-     * Fetches Angela pid from process-list.
+     * Tries to kill all Angela related processes.
+     *
+     * @return bool
+     */
+    public function kill() : bool
+    {
+        // kill server process:
+        $serverPid = $this->getServerPid();
+        if (!empty($serverPid)) {
+            $this->killProcessById($serverPid);
+        }
+
+        // kill worker processes:
+        $workerPids = [];
+        foreach ($this->config['pool'] as $poolName => $poolConfig) {
+            $pids = $this->getPidsByPath($poolConfig['worker_file']);
+            if (empty($pids)) {
+                continue;
+            }
+            $workerPids = array_merge($workerPids, $pids);
+        }
+        if (empty($workerPids)) {
+            return true;
+        }
+        foreach ($workerPids as $pid) {
+            $this->killProcessById($pid);
+        }
+        return true;
+    }
+
+    /**
+     * Tries to estimate PID of server process.
      *
      * @return int
      */
     protected function getServerPid() : int
     {
+        return $this->getPidByPath($this->config['server_path']);
+    }
+
+    /**
+     * Tries to estimate PID by given path.
+     *
+     * @param string $path
+     * @return int
+     */
+    protected function getPidByPath(string $path) : int
+    {
         $procInfo = [];
         $cliOutput = [];
-        exec('ps x | grep ' . $this->config['server_path'], $cliOutput);
+        exec('ps x | grep ' . $path, $cliOutput);
         foreach ($cliOutput as $line) {
             $line = trim($line);
             if (empty($line)) {
@@ -139,6 +189,43 @@ class AngelaControl
             return 0;
         }
         return (int)$procInfo[0];
+    }
+
+    /**
+     * Tries to estimate all PIDs by given path.
+     *
+     * @param string $path
+     * @return array
+     */
+    protected function getPidsByPath(string $path) : array
+    {
+        $pids = [];
+        $cliOutput = [];
+        exec('ps x | grep ' . $path, $cliOutput);
+        foreach ($cliOutput as $line) {
+            $line = trim($line);
+            if (empty($line)) {
+                continue;
+            }
+            if (strpos($line, 'grep') !== false) {
+                continue;
+            }
+            $procInfo = preg_split('#\s+#', $line);
+            array_push($pids, (int)$procInfo[0]);
+        }
+        return $pids;
+    }
+
+    /**
+     * Kills a process by given PID.
+     *
+     * @param int $pid
+     * @return bool
+     */
+    protected function killProcessById(int $pid)
+    {
+        $result = exec('kill ' . $pid);
+        return empty($result);
     }
 
     /**
