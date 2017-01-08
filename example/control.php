@@ -30,7 +30,24 @@ try {
             break;
         case 'status':
             $response = $angelaControl->status();
-            print_r($response);
+            echo '------------------------------ SERVER STATUS ------------------------------' . PHP_EOL;
+            echo 'Angela Version: ' . $response['version'] . PHP_EOL;
+            echo 'Start time:     ' . $response['starttime'] . PHP_EOL;
+            echo 'Uptime:         ' . $response['uptime'] . PHP_EOL;
+            echo '------------------------- WORKER/JOB INFORMATION --------------------------' . PHP_EOL;
+            echo 'Job requests total:   ' . $response['job_info']['job_requests_total'] . PHP_EOL;
+            echo 'Current queue length: ' . $response['job_info']['queue_length'] . PHP_EOL;
+            echo PHP_EOL;
+            echo 'Active worker per pool:' . PHP_EOL;
+            foreach ($response['active_worker'] as $poolName => $workerCount) {
+                echo ' + ' . $poolName . ': ' . $workerCount . ' ' . PHP_EOL;
+            }
+            echo PHP_EOL;
+            echo 'Jobs completed per worker:' . PHP_EOL;
+            foreach ($response['job_info']['worker_stats'] as $workerId => $jobsCompleted) {
+                echo ' + ' . $workerId . ': ' . $jobsCompleted . PHP_EOL;
+            }
+            echo PHP_EOL;
             break;
         case 'flush-queue':
             $angelaControl->flushQueue();

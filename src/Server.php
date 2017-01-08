@@ -11,12 +11,28 @@ use React\ChildProcess\Process;
 
 class Server
 {
+    const VERSION = '2.0.0';
+
+    /**
+     * Keeps the time the server was started.
+     *
+     * @var int $startTime
+     */
+    protected $startTime;
+
     /**
      * Holds the server configuration.
      *
      * @var array $config
      */
     protected $config;
+
+    /**
+     * Stores amount of total jobs handled by server.
+     *
+     * @var int $totalJobRequests
+     */
+    protected $totalJobRequests = 0;
 
     /**
      * @var LoggerInterface $logger
@@ -122,6 +138,7 @@ class Server
     public function __construct(array $config)
     {
         $this->config = $config;
+        $this->startTime = time();
 
         // create logger
         $loggerFactory = new LoggerFactory($config['logger']);
@@ -443,6 +460,7 @@ class Server
         if ($backgroundJob === true) {
             $this->respondToClient($clientAddress, $jobId);
         }
+        $this->totalJobRequests++;
         return $jobId;
     }
 
@@ -706,9 +724,20 @@ class Server
     protected function getStatusData() : array
     {
         $statusData = [
+            'version' => self::VERSION,
+            'starttime' => '',
+            'uptime' => '',
             'active_worker' => [],
             'job_info' => [],
         ];
+
+        $starttime = date('Y-m-d H:i:s', $this->startTime);
+        $start = new \DateTime($starttime);
+        $now = new \DateTime('now');
+        $uptime = $start->diff($now)->format('%ad %Hh %Im %Ss');
+        $statusData['starttime'] = $starttime;
+        $statusData['uptime'] = $uptime;
+
         foreach (array_keys($this->processes) as $poolName) {
             if (!isset($statusData['active_worker'][$poolName])) {
                 $statusData['active_worker'][$poolName] = 0;
@@ -721,6 +750,7 @@ class Server
                 }
             }
         }
+        $statusData['job_info']['job_requests_total'] = $this->totalJobRequests;
         $statusData['job_info']['queue_length'] = $this->jobsInQueue;
         $statusData['job_info']['worker_stats'] = $this->workerStats;
         return $statusData;

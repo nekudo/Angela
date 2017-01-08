@@ -12,7 +12,7 @@ try {
         if (rand(1, 2) === 1) {
             $result = $client->doNormal('taskA', 'job_' . $i);
         } else {
-            $result = $client->doBackground('taskC', 'job_' . $i);
+            $result = $client->doBackground('taskA', 'job_' . $i);
         }
         echo 'job_' . $i . ' -> ' . $result . PHP_EOL;
     }
