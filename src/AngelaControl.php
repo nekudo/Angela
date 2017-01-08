@@ -3,7 +3,6 @@
 class AngelaControl
 {
     // @todo Implement "force kill"
-    // @todo Implement "reload"
     // @todo Implement "clear queue"
 
     /**
@@ -100,6 +99,19 @@ class AngelaControl
             throw new \RuntimeException('Error fetching status. (Incorrect response)');
         }
         return json_decode($response, true);
+    }
+
+    public function flushQueue() : bool
+    {
+        $serverPid = $this->getServerPid();
+        if (empty($serverPid)) {
+            throw new \RuntimeException('Angela not currently running.');
+        }
+        $response = $this->sendCommand('flush_queue');
+        if ($response !== 'ok') {
+            throw new \RuntimeException('Error flushing queue. (Incorrect response)');
+        }
+        return true;
     }
 
     /**

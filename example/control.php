@@ -28,8 +28,16 @@ try {
             $response = $angelaControl->status();
             print_r($response);
             break;
+        case 'flush-queue':
+            $response = $angelaControl->flushQueue();
+            if ($response === true) {
+                echo 'Queue flushed.' . PHP_EOL;
+            } else {
+                echo 'Error flushing queue.' . PHP_EOL;
+            }
+            break;
         default:
-            exit('Invalid action. Valid actions are: start|stop|restart|status|kill' . PHP_EOL);
+            exit('Invalid action. Valid actions are: start|stop|restart|status' . PHP_EOL);
     }
 } catch (Exception $e) {
     echo 'Error: ' . $e->getMessage() . PHP_EOL;

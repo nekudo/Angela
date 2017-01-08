@@ -1,8 +1,6 @@
 # Angela
 
-Angela is a PHP microservice worker framework.
-
-*Attention:* v2 branch is not stable yet!
+Angela is a PHP worker framework based on ZeroMQ.
 
 ## Features
 
@@ -26,7 +24,7 @@ Using composer:
 
 ## Documentation
 
-Please see "demo" folder for some sample code. These are the most important files:
+Please see "example" folder for some sample code. These are the most important files:
 
 * __config.php:__ Holds all necessary configuration for Angela and your worker pools.
 * __control.php:__ A simple control-script to start/stop/restart Angela. Use `php control.php start` to fire up Angela.

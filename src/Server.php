@@ -411,6 +411,11 @@ class Server
                 $statusData = $this->getStatusData();
                 $this->respondToClient($clientAddress, json_encode($statusData));
                 return true;
+            case 'flush_queue':
+                $result = ($this->flushQueue() === true) ? 'ok' : 'error';
+                $this->respondToClient($clientAddress, $result);
+                return true;
+
         }
         $this->respondToClient($clientAddress, 'error');
         throw new ServerException('Received unknown command.');
@@ -670,7 +675,9 @@ class Server
             if ($this->jobCanBeProcessed($jobName)) {
                 continue;
             }
+            $jobsCount = count($this->jobQueues[$jobName]);
             $this->jobQueues[$jobName] = [];
+            $this->jobsInQueue -= $jobsCount;
         }
         return $this->pushJobs();
     }
@@ -789,6 +796,20 @@ class Server
             $this->workerStats[$workerId],
             $this->workerJobMap[$workerId]
         );
+        return true;
+    }
+
+    /**
+     * Removes jobs from all queues.
+     *
+     * @return bool
+     */
+    protected function flushQueue() : bool
+    {
+        foreach (array_keys($this->jobQueues) as $jobName) {
+            $this->jobQueues[$jobName] = [];
+        }
+        $this->jobsInQueue = 0;
         return true;
     }
 }

@@ -11,7 +11,7 @@ for ($i = 1; $i <= 100; $i++) {
     if (rand(1, 2) === 1) {
         $result = $client->doNormal('taskA', 'job_' . $i);
     } else {
-        $result = $client->doBackground('taskA', 'job_' . $i);
+        $result = $client->doBackground('taskC', 'job_' . $i);
     }
     echo 'job_'.$i . ' -> ' . $result . PHP_EOL;
 }
