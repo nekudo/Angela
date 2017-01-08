@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace Nekudo\Angela;
 
-// @todo Log possible errors
+use Nekudo\Angela\Exception\ClientException;
 
 class Client
 {
@@ -21,6 +21,7 @@ class Client
      *
      * @param string $dsn
      * @return bool
+     * @throws ClientException
      */
     public function addServer(string $dsn) : bool
     {
@@ -31,8 +32,7 @@ class Client
             $this->dsn = $dsn;
             return true;
         } catch (\ZMQException $e) {
-            var_dump($e->getMessage());
-            return false;
+            throw new ClientException($e->getMessage());
         }
     }
 
@@ -41,6 +41,7 @@ class Client
      *
      * @param string $jobName
      * @param string $workload
+     * @throws ClientException
      * @return string The job result.
      */
     public function doNormal(string $jobName, string $workload) : string
@@ -56,9 +57,8 @@ class Client
             $result = $this->socket->recv();
             return $result;
         } catch (\ZMQException $e) {
-            var_dump($e->getMessage());
+            throw new ClientException($e->getMessage());
         }
-        return '';
     }
 
     /**
@@ -68,6 +68,7 @@ class Client
      * @param string $jobName
      * @param string $workload
      * @return string Job handle
+     * @throws ClientException
      */
     public function doBackground(string $jobName, string $workload) : string
     {
@@ -82,14 +83,14 @@ class Client
             $result = $this->socket->recv();
             return $result;
         } catch (\ZMQException $e) {
-            var_dump($e->getMessage());
+            throw new ClientException($e->getMessage());
         }
-        return '';
     }
 
     /**
      * Sends a controll command to server and returns servers response.
      *
+     * @throws ClientException
      * @param string $command
      * @return string
      */
@@ -105,16 +106,21 @@ class Client
             $result = $this->socket->recv();
             return $result;
         } catch (\ZMQException $e) {
-            var_dump($e->getMessage());
+            throw new ClientException($e->getMessage());
         }
-        return '';
     }
 
     /**
      * Closes socket connection to server.
+     *
+     * @throws ClientException
      */
     public function close()
     {
-        $this->socket->disconnect($this->dsn);
+        try {
+            $this->socket->disconnect($this->dsn);
+        } catch (\ZMQException $e) {
+            throw new ClientException($e->getMessage());
+        }
     }
 }

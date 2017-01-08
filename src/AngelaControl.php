@@ -1,5 +1,6 @@
 <?php namespace Nekudo\Angela;
 
+use Nekudo\Angela\Exception\ClientException;
 use Nekudo\Angela\Exception\ControlException;
 
 class AngelaControl
@@ -236,10 +237,14 @@ class AngelaControl
      */
     protected function sendCommand(string $command) : string
     {
-        $client = new Client;
-        $client->addServer($this->config['sockets']['client']);
-        $response = $client->sendCommand($command);
-        $client->close();
-        return $response;
+        try {
+            $client = new Client;
+            $client->addServer($this->config['sockets']['client']);
+            $response = $client->sendCommand($command);
+            $client->close();
+            return $response;
+        } catch (ClientException $e) {
+            return 'error';
+        }
     }
 }
