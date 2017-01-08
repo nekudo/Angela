@@ -31,14 +31,14 @@ A typical Angela application consists of a job-server, a client to communicate w
 The job server is Angelas main process. It manages all your workers, listens for new job-requests, distributes these jobs to your workers and send back responses to the client.
 One server can manage multiple pools of workers and hence handle various types of jobs.
 
-The job server will fire up worker-processes as defined in your project configuration. It will monitor the wokers and for example restart processes if a worker crashes.
+The job server will fire up worker-processes as defined in your project configuration. It will monitor the workers and for example restart processes if a worker crashes.
 
 It is also capable of basic load-balancing so jobs will always be passed to the next idle worker.
 
 ### Worker
 
 Angela provides an API to easily build worker processes. Each worker typically does one kind of job (even though in can handle multiple types).
-You would than start multiple pools of worker processes which than handle the different kind of jobs required in your application.
+You would than start multiple pools of worker processes which handle the different kind of jobs required in your application.
 
 __Example__
 ```php
@@ -66,7 +66,7 @@ $worker->run();
 
 The client is a simple class which allows you to send commands or job-requests to the server. It can send commands, normal jobs or background-jobs.
 
-Normal jobs are blocking as the client will wait for a response. Background jobs however are non-blocking. The will be processes by the server but the client does not wait for a response.
+Normal jobs are blocking as the client will wait for a response. Background jobs however are non-blocking. They will be processed by the server but the client does not wait for a response.
 
 __Example__
 ```php
@@ -93,10 +93,16 @@ Using composer:
 
 ## Documentation
 
-Please see "example" folder for some sample code. These are the most important files:
+Please see "example" folder for a dummy application. These are the most important files and commands:
 
 * __config.php:__ Holds all necessary configuration for the server and worker pools.
-* __control.php:__ A simple control-script to start/stop/restart your server and worker processes. Use `php control.php start` to fire up Angela.
+* __control.php:__ A simple control-script to start/stop/restart your server and worker processes. Available commands are:
+  * php control.php start
+  * php control.php stop
+  * php control.php restart
+  * php control.php status
+  * php control.php kill
+  * php control.php flush-queue  
 * __client.php:__ An example client sending jobs to the job server.
 * __worker/*.php:__ All your worker-scripts handling the actual jobs.
 
